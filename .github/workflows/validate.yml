@@ -1,0 +1,59 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    name: Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Pinned so a new upstream release can't change CI without a repo change.
+      # Bump deliberately.
+      - name: Claude Code plugin and marketplace (strict)
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.308
+          claude plugin validate --strict .claude-plugin/plugin.json
+          claude plugin validate --strict .claude-plugin/marketplace.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install check-jsonschema==0.38.2 pyyaml==6.0.3
+
+      # Schemas are vendored from https://agent-plugins.org/schemas/1.0.0/ so an
+      # outage there can't fail CI.
+      - name: Agent Plugins schemas (Codex, Cursor, Kiro)
+        run: |
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/plugin.schema.json plugin.json
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/mcp.schema.json mcp.json
+
+      # No credentials in manifests, server definitions in sync, versions in
+      # sync, skill frontmatter valid. See the script's docstring.
+      - name: Repo checks
+        run: python .github/scripts/check_plugin.py
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # gitleaks-action needs a paid license for org repos; the CLI image doesn't.
+      - name: gitleaks
+        run: >-
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo --redact --verbose
