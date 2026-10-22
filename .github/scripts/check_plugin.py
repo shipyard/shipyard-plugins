@@ -1,8 +1,10 @@
 """Repo checks the client validators don't make.
 
-- MCP server definitions carry only command/args (and `type` in mcp.json), run
-  `shipyard`, hold no credentials, and match across mcp.json and .mcp.json.
-- No token-shaped string or token reference anywhere in a manifest. Users
+- MCP servers are defined only in mcp.json and .mcp.json, never inline in a
+  plugin or marketplace manifest. Those definitions carry only command/args (and
+  `type` in mcp.json), run `shipyard`, and match across the two files.
+- No `env` or `headers` key, token-shaped string or token reference anywhere in
+  a manifest. Users
   authenticate with `shipyard login`; Codex passes Claude's ${user_config.*}
   placeholders through literally (SHIP-338), so a wired-in token breaks auth.
 - name and version match across plugin.json and .claude-plugin/plugin.json.
@@ -23,26 +25,34 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFESTS = ["plugin.json", "mcp.json", ".mcp.json", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]
 SERVER_KEYS = {"mcp.json": {"type", "command", "args"}, ".mcp.json": {"command", "args"}}
 
+SERVER_FILES = {"mcp.json", ".mcp.json"}
+CREDENTIAL_KEYS = {"env", "envfile", "headers"}
+
 # syt_ user tokens, then any long unbroken token_urlsafe-style run (org API
-# tokens and bypass tokens have no prefix).
-TOKEN_VALUE = re.compile(r"syt_[A-Za-z0-9_-]+|[A-Za-z0-9_-]{32,}")
-TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token|token|authorization|bearer", re.IGNORECASE)
+# tokens and bypass tokens have no prefix). The run must contain an uppercase
+# letter, digit or underscore, so long hyphenated words like
+# `kubernetes-pull-request-preview-environments` don't match.
+TOKEN_VALUE = re.compile(r"syt_[A-Za-z0-9_-]+|(?=[a-z-]*[A-Z0-9_])[A-Za-z0-9_-]{32,}")
+# Wiring a token in, checked in every key and value.
+TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token", re.IGNORECASE)
+# Words that are fine in prose, so they're checked only in keys and server definitions.
+TOKEN_WORD = re.compile(r"token|authorization|bearer", re.IGNORECASE)
 ARG = re.compile(r"^-{0,2}[a-z][a-z0-9-]*$")
 
 errors = []
 
 
 def strings(node, path):
-    """Yield (path, key or value) for every key and string value in a JSON tree."""
+    """Yield (path, is_key, key or value) for every key and string value in a JSON tree."""
     if isinstance(node, dict):
         for key, value in node.items():
-            yield f"{path}.{key}", key
+            yield f"{path}.{key}", True, key
             yield from strings(value, f"{path}.{key}")
     elif isinstance(node, list):
         for i, value in enumerate(node):
             yield from strings(value, f"{path}[{i}]")
     elif isinstance(node, str):
-        yield path, node
+        yield path, False, node
 
 
 def load(name):
@@ -58,10 +68,15 @@ docs = {name: load(name) for name in MANIFESTS}
 for name, doc in docs.items():
     if doc is None:
         continue
-    for path, s in strings(doc, name):
-        if path.endswith(".$schema"):
+    for path, is_key, s in strings(doc, name):
+        if is_key and s.lower() in CREDENTIAL_KEYS:
+            errors.append(f"{path}: `{s}` is not allowed in a manifest; rely on `shipyard login`")
+        if is_key and s == "mcpServers" and not (name in SERVER_FILES and path == f"{name}.mcpServers"):
+            errors.append(f"{path}: define MCP servers only in mcp.json and .mcp.json")
+        if path.endswith(".$schema") and not is_key:
             continue
-        if TOKEN_VALUE.search(s) or TOKEN_REF.search(s):
+        in_server = ".mcpServers" in path
+        if TOKEN_VALUE.search(s) or TOKEN_REF.search(s) or ((is_key or in_server) and TOKEN_WORD.search(s)):
             errors.append(f"{path}: {s!r} looks like a credential or token reference; rely on `shipyard login`")
 
 servers = {}
