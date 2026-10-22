@@ -7,5 +7,5 @@
   "homepage": "https://shipyard.build",
   "repository": "https://github.com/shipyard/shipyard-plugins",
   "license": "Apache-2.0",
-  "keywords": ["shipyard", "ephemeral environments", "preview environments", "pull request environments"]
+  "keywords": ["shipyard", "ephemeral-environments", "preview-environments", "pull-request-environments"]
 }

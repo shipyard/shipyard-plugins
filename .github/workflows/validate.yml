@@ -19,9 +19,11 @@ jobs:
         with:
           node-version: '22'
 
+      # Pinned so a new upstream release can't change CI without a repo change.
+      # Bump deliberately.
       - name: Claude Code plugin and marketplace (strict)
         run: |
-          npm install -g @anthropic-ai/claude-code
+          npm install -g @anthropic-ai/claude-code@2.1.308
           claude plugin validate --strict .claude-plugin/plugin.json
           claude plugin validate --strict .claude-plugin/marketplace.json
 
@@ -29,22 +31,19 @@ jobs:
         with:
           python-version: '3.12'
 
+      - run: pip install check-jsonschema==0.38.2 pyyaml==6.0.3
+
+      # Schemas are vendored from https://agent-plugins.org/schemas/1.0.0/ so an
+      # outage there can't fail CI.
       - name: Agent Plugins schemas (Codex, Cursor, Kiro)
         run: |
-          pip install check-jsonschema
-          check-jsonschema --schemafile https://agent-plugins.org/schemas/1.0.0/plugin.schema.json plugin.json
-          check-jsonschema --schemafile https://agent-plugins.org/schemas/1.0.0/mcp.schema.json mcp.json
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/plugin.schema.json plugin.json
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/mcp.schema.json mcp.json
 
-      # Shared manifests must never carry a token: Codex passes Claude's
-      # ${user_config.*} placeholders through literally, and users authenticate
-      # with `shipyard login` instead.
-      - name: No credentials in manifests
-        run: |
-          if grep -rnE 'user_config|SHIPYARD_API_TOKEN|api_token|"env"|"headers"' \
-              plugin.json mcp.json .mcp.json .claude-plugin/; then
-            echo "Manifests must not reference tokens or env/headers; rely on shipyard login."
-            exit 1
-          fi
+      # No credentials in manifests, server definitions in sync, versions in
+      # sync, skill frontmatter valid. See the script's docstring.
+      - name: Repo checks
+        run: python .github/scripts/check_plugin.py
 
   secrets:
     name: Secret scan

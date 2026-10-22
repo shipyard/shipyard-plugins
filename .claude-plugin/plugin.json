@@ -6,7 +6,7 @@
   "homepage": "https://shipyard.build",
   "repository": "https://github.com/shipyard/shipyard-plugins",
   "license": "Apache-2.0",
-  "keywords": ["shipyard", "ephemeral-environments", "preview-environments"],
+  "keywords": ["shipyard", "ephemeral-environments", "preview-environments", "pull-request-environments"],
   "documentationUrl": "https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md",
   "supportUrl": "mailto:support@shipyard.build",
   "privacyPolicyUrl": "https://shipyard.build/privacy/",
