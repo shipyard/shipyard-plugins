@@ -1,0 +1,58 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    name: Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Claude Code plugin and marketplace (strict)
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate --strict .claude-plugin/plugin.json
+          claude plugin validate --strict .claude-plugin/marketplace.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Agent Plugins schemas (Codex, Cursor, Kiro)
+        run: |
+          pip install check-jsonschema
+          check-jsonschema --schemafile https://agent-plugins.org/schemas/1.0.0/plugin.schema.json plugin.json
+          check-jsonschema --schemafile https://agent-plugins.org/schemas/1.0.0/mcp.schema.json mcp.json
+
+      # Shared manifests must never carry a token: Codex passes Claude's
+      # ${user_config.*} placeholders through literally, and users authenticate
+      # with `shipyard login` instead.
+      - name: No credentials in manifests
+        run: |
+          if grep -rnE 'user_config|SHIPYARD_API_TOKEN|api_token|"env"|"headers"' \
+              plugin.json mcp.json .mcp.json .claude-plugin/; then
+            echo "Manifests must not reference tokens or env/headers; rely on shipyard login."
+            exit 1
+          fi
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

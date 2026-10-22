@@ -1,0 +1,14 @@
+{
+  "name": "shipyard",
+  "version": "0.1.0",
+  "description": "Manage Shipyard ephemeral environments from Claude: list, inspect, rebuild, debug and verify changes against preview environments.",
+  "author": { "name": "Shipyard", "url": "https://shipyard.build", "email": "support@shipyard.build" },
+  "homepage": "https://shipyard.build",
+  "repository": "https://github.com/shipyard/shipyard-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["shipyard", "ephemeral-environments", "preview-environments"],
+  "documentationUrl": "https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md",
+  "supportUrl": "mailto:support@shipyard.build",
+  "privacyPolicyUrl": "https://shipyard.build/privacy/",
+  "termsOfServiceUrl": "https://shipyard.build/terms/"
+}

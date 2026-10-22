@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shipyard": {
+      "command": "shipyard",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
