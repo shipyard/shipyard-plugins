@@ -41,8 +41,10 @@ Restart the session afterwards and ask "list my Shipyard environments".
 ## What it can do, and what it sends
 
 The MCP server calls the Shipyard API (`https://shipyard.build`) with your token. It reads and changes only the
-environments, services, volumes, snapshots and environment variables your token can access. It sends nothing anywhere
-else. The plugin itself contains no code; it only tells your agent how to start `shipyard mcp serve`.
+environments, services, volumes, snapshots and environment variables your token can access. From CLI 1.10.0, it also
+checks GitHub (`api.github.com`) for a newer CLI release, at most once a day, without your token. Set
+`SHIPYARD_NO_UPDATE_CHECK=1` to turn that off. It sends nothing anywhere else. The plugin itself contains no code; it
+only tells your agent how to start `shipyard mcp serve`.
 
 - Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
   values masked).
