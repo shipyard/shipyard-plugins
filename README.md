@@ -56,7 +56,9 @@ For unattended agents, allow only the read-only tools. Per-client settings are i
 ## Update and uninstall
 
 - Update the CLI: `brew upgrade shipyard`, or `shipyard upgrade` on CLI 1.10.0 or later.
-- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`.
+- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In Kiro,
+  uninstall the power and import it from GitHub again: Kiro's update check can fail with "No name was provided for
+  author".
 - Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard`, or remove it from the
   Kiro Powers panel or Cursor's plugin settings.
 
