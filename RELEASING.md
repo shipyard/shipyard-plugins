@@ -20,6 +20,11 @@ the manifests, server definition or skill change.
 upgrade shipyard` picks up whatever is on `main`, and Claude Code reads the marketplace from it. Treat every merge to
 `main` as a release. Branch protection requires a code-owner review and the `Manifests` and `Secret scan` checks.
 
+So any PR that changes the manifests, `mcp.json`/`.mcp.json` or `skills/` must bump the version, even a one-line skill
+fix. Without a bump, Codex users get the change on their next update, but Claude Code users never do, because their
+installed version still matches. CI doesn't check this yet; reviewers do. Changes to `README.md`, `RELEASING.md` or
+`.github/` don't need a bump.
+
 ## Ownership
 
 | Role | Owner |
@@ -41,8 +46,9 @@ account here, by GitHub handle, not by email or credential.
    sets one). CI fails if they differ. Use semver: patch for wording and skill fixes, minor for new behaviour or a
    higher minimum CLI version, major for changes that need user action.
    Bump the version in every release: Claude Code uses it to decide whether an installed plugin is out of date.
-2. If the release needs a newer CLI, release the CLI first and raise the minimum version in `README.md` and the skill
-   in the same PR.
+2. If the release needs a newer CLI, release the CLI first and raise the minimum version in `README.md` in the same
+   PR. `README.md` is the only place that states the minimum. The skill (`skills/shipyard/SKILL.md`) only gives
+   version-specific advice, such as `shipyard upgrade` needing CLI 1.10.0, so check that advice still holds.
 3. Merge after review and a green CI run.
 4. Tag the merge commit and publish a GitHub Release with the changes:
 
@@ -59,7 +65,10 @@ account here, by GitHub handle, not by email or credential.
 
 ## Rolling back
 
-- **Plugin:** revert the change on `main` with a PR and release it as a new patch version. Don't re-point tags.
+- **Plugin:** revert the change on `main` with a PR that also bumps the version **forward** (for example, from a bad
+  0.2.0 to 0.2.1), and release that. A plain `git revert` of a release PR also reverts its version bump: the
+  manifests go back to the old version, CI still passes, and Claude Code users already on the bad version never get
+  the rollback. Don't re-point tags.
   Self-hosted installs get the fix on their next update. For curated listings, submit the new version; if a
   marketplace lets you unlist or restore a previous version, the listing owner does that while review is pending.
 - **CLI:** follow [Rolling back](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#rolling-back) in the
