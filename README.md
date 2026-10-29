@@ -34,9 +34,19 @@ that tells the agent how to use it safely.
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard@shipyard` |
 | Kiro | Powers panel: install from GitHub URL `https://github.com/shipyard/shipyard-plugins` |
-| Cursor | Settings, Plugins: add from this repository |
+| Cursor | `cursor-agent plugin marketplace add https://github.com/shipyard/shipyard-plugins`, then Cursor Settings, Plugins: install Shipyard |
 
 Restart the session afterwards and ask "list my Shipyard environments".
+
+- **Cursor: set Auto-Run first.** With Auto-Run on and MCP Tools Protection off, Cursor runs every Shipyard tool
+  without asking, including ones that stop or rebuild environments. In Cursor Settings, Auto-Run, choose **Ask Every
+  Time** or turn on **MCP Tools Protection**.
+- **Use the plugin or a hand-added server, not both.** If you added `shipyard mcp serve` to your client yourself,
+  remove it first (for example `claude mcp remove shipyard`). Codex is the exception: a `[mcp_servers.shipyard]` entry
+  replaces the plugin's server.
+- **If the server doesn't start** with "command not found", your client can't see `shipyard` on its `PATH` (common for
+  desktop apps opened from the Dock). The plugin can't change that command, so add the server by hand with the
+  absolute path from `which shipyard`, as in the [MCP guide](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#connecting-a-client).
 
 ## What it can do, and what it sends
 
@@ -47,20 +57,23 @@ else. The plugin itself contains no code; it only tells your agent how to start 
 - Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
   values masked).
 - Other tools stop, rebuild, restart, update branches, set or delete environment variables, reset or restore volumes,
-  and create environments. Your agent asks before using them unless you allow them.
+  and create environments. Claude Code and Codex ask before using them unless you allow them. Cursor asks only if
+  Auto-Run is set as above. Kiro's CLI runs tools without asking; see the per-client settings below.
 - `exec_service` (run a command in a container) is **off** unless you enable it.
 
-For unattended agents, allow only the read-only tools. Per-client settings are in
+For unattended agents, allow only the read-only tools. The plugin's tools have different names from a hand-added
+server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settings are in
 [Permissions and least privilege](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#permissions-and-least-privilege).
 
 ## Update and uninstall
 
 - Update the CLI: `brew upgrade shipyard`, or `shipyard upgrade` on CLI 1.10.0 or later.
-- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In Kiro,
+- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In
+  Cursor, run `cursor-agent plugin marketplace update shipyard`, then reinstall from Cursor Settings, Plugins. In Kiro,
   uninstall the power and import it from GitHub again: Kiro's update check can fail with "No name was provided for
   author".
 - Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard`, or remove it from the
-  Kiro Powers panel or Cursor's plugin settings.
+  Kiro Powers panel or Cursor's plugin settings (then `cursor-agent plugin marketplace remove shipyard`).
 
 ## Troubleshooting
 
