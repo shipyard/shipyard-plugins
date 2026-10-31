@@ -1,12 +1,21 @@
 {
   "name": "shipyard",
   "description": "Shipyard plugins for coding agents",
-  "owner": { "name": "Shipyard", "url": "https://shipyard.build", "email": "support@shipyard.build" },
+  "owner": {
+    "name": "Shipyard",
+    "url": "https://shipyard.build",
+    "email": "support@shipyard.build"
+  },
   "plugins": [
     {
       "name": "shipyard",
       "source": "./",
       "description": "Manage Shipyard ephemeral environments: list, inspect, rebuild, debug and verify changes against preview environments."
+    },
+    {
+      "name": "shipyard-hosted",
+      "source": "./hosted",
+      "description": "Add your app to Shipyard and check its preview environments, with nothing to install: sign in with Shipyard and pick an organization."
     }
   ]
 }

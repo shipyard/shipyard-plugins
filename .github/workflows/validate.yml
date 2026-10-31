@@ -25,6 +25,7 @@ jobs:
         run: |
           npm install -g @anthropic-ai/claude-code@2.1.308
           claude plugin validate --strict .claude-plugin/plugin.json
+          claude plugin validate --strict hosted/.claude-plugin/plugin.json
           claude plugin validate --strict .claude-plugin/marketplace.json
 
       - uses: actions/setup-python@v5
@@ -37,8 +38,8 @@ jobs:
       # outage there can't fail CI.
       - name: Agent Plugins schemas (Codex, Cursor, Kiro)
         run: |
-          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/plugin.schema.json plugin.json
-          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/mcp.schema.json mcp.json
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/plugin.schema.json plugin.json hosted/plugin.json
+          check-jsonschema --schemafile schemas/agent-plugins-1.0.0/mcp.schema.json mcp.json hosted/mcp.json
 
       # No credentials in manifests, server definitions in sync, versions in
       # sync, skill frontmatter valid. See the script's docstring.
