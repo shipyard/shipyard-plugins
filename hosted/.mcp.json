@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shipyard": {
+      "type": "http",
+      "url": "https://mcp.shipyard.build/mcp"
+    }
+  }
+}

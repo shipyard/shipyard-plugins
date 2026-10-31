@@ -1,0 +1,14 @@
+{
+  "name": "shipyard-hosted",
+  "version": "0.1.0",
+  "description": "Add your app to Shipyard and check its preview environments from Claude, with nothing to install: sign in with Shipyard and pick an organization.",
+  "author": { "name": "Shipyard", "url": "https://shipyard.build", "email": "support@shipyard.build" },
+  "homepage": "https://shipyard.build",
+  "repository": "https://github.com/shipyard/shipyard-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["shipyard", "ephemeral-environments", "preview-environments", "pull-request-environments"],
+  "documentationUrl": "https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#the-hosted-server",
+  "supportUrl": "mailto:support@shipyard.build",
+  "privacyPolicyUrl": "https://shipyard.build/privacy/",
+  "termsOfServiceUrl": "https://shipyard.build/terms/"
+}
