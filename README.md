@@ -34,9 +34,13 @@ that tells the agent how to use it safely.
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard@shipyard` |
 | Kiro | Powers panel: install from GitHub URL `https://github.com/shipyard/shipyard-plugins` |
-| Cursor | Settings, Plugins: add from this repository |
+| Cursor | `cursor-agent plugin marketplace add https://github.com/shipyard/shipyard-plugins`, then Cursor Settings, Plugins: install Shipyard |
 
 Restart the session afterwards and ask "list my Shipyard environments".
+
+**In Cursor, check Auto-Run first.** With Auto-Run on, Cursor runs Shipyard tools without asking, destructive ones
+included. In Cursor Settings, Auto-Run, choose **Ask Every Time** or turn on **MCP Tools Protection**. The plugin's
+server runs in the Cursor app only: `cursor-agent` doesn't load it.
 
 ## What it can do, and what it sends
 
@@ -56,11 +60,13 @@ For unattended agents, allow only the read-only tools. Per-client settings are i
 ## Update and uninstall
 
 - Update the CLI: `brew upgrade shipyard`, or `shipyard upgrade` on CLI 1.10.0 or later.
-- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In Kiro,
+- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In Cursor, run
+  `cursor-agent plugin marketplace update shipyard`, then reinstall the plugin from Cursor Settings, Plugins. In Kiro,
   uninstall the power and import it from GitHub again: Kiro's update check can fail with "No name was provided for
   author".
-- Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard`, or remove it from the
-  Kiro Powers panel or Cursor's plugin settings.
+- Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard`, uninstall it from
+  Cursor Settings, Plugins (and run `cursor-agent plugin marketplace remove shipyard`), or remove it from the Kiro
+  Powers panel.
 
 ## Troubleshooting
 
