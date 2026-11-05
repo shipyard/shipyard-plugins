@@ -40,7 +40,8 @@ Restart the session afterwards and ask "list my Shipyard environments".
 
 - **Cursor: set Auto-Run first.** With Auto-Run on and MCP Tools Protection off, Cursor runs every Shipyard tool
   without asking, including ones that stop or rebuild environments. In Cursor Settings, Auto-Run, choose **Ask Every
-  Time** or turn on **MCP Tools Protection**.
+  Time** or turn on **MCP Tools Protection**. The plugin's server runs in the Cursor app only: `cursor-agent` doesn't
+  load it.
 - **Use the plugin or a hand-added server, not both.** If you added `shipyard mcp serve` to your client yourself,
   remove it first (for example `claude mcp remove shipyard`). Codex is the exception: a `[mcp_servers.shipyard]` entry
   replaces the plugin's server.
