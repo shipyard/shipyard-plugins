@@ -53,7 +53,7 @@ Restart the session afterwards and ask "list my Shipyard environments".
 
 The MCP server calls the Shipyard API (`https://shipyard.build`) with your token. It reads and changes only the
 environments, services, volumes, snapshots and environment variables your token can access. It sends nothing anywhere
-else. The plugin itself contains no code; it only tells your agent how to start `shipyard mcp serve`.
+else. The CLI plugin itself contains no code; it only tells your agent how to start `shipyard mcp serve`.
 
 - Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
   values masked).
@@ -65,6 +65,32 @@ else. The plugin itself contains no code; it only tells your agent how to start 
 For unattended agents, allow only the read-only tools. The plugin's tools have different names from a hand-added
 server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settings are in
 [Permissions and least privilege](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#permissions-and-least-privilege).
+
+## Hosted plugin: nothing to install
+
+`shipyard-hosted` connects your agent to Shipyard's hosted MCP server (`https://mcp.shipyard.build/mcp`) instead of
+running the CLI. After installing, connect it from your client: `/mcp` in Claude Code, `codex mcp login shipyard` in
+Codex. Your browser opens Shipyard: sign in, pick the organization the agent works in, and allow access. Your client
+keeps the token; the plugin holds none.
+
+It adds an app to Shipyard from a pushed GitHub branch, reconfigures it, and checks its environments, builds and
+failures. A reconfiguration can rebuild the app, restart a stopped one and unlink repos, and your agent should ask
+first: the plugin's skill tells it to, but your client decides whether it can run without asking. There's no tool to
+stop or restart an environment, rebuild on request, set env vars, read service logs or run commands; use the CLI
+plugin above, or the Shipyard dashboard, for those.
+
+| Client | Install |
+|---|---|
+| Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
+| Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
+
+This plugin is new: signing in through it, in any client, and using it in Cursor or Kiro haven't been tested yet.
+
+Install one of the two plugins, not both: each defines a server named `shipyard`.
+
+To disconnect, remove the server or sign out of it in your client's MCP settings. To update the plugin, use
+`claude plugin update shipyard-hosted@shipyard` or `codex plugin marketplace upgrade shipyard`. To remove it, use
+`claude plugin uninstall shipyard-hosted@shipyard` or `codex plugin remove shipyard-hosted@shipyard`.
 
 ## Update and uninstall
 
