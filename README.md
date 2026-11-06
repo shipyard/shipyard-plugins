@@ -60,7 +60,9 @@ Cursor and Kiro haven't been tested with this plugin yet.
 
 Install one of the two plugins, not both: each defines a server named `shipyard`.
 
-To disconnect, remove the server or sign out of it in your client's MCP settings.
+To disconnect, remove the server or sign out of it in your client's MCP settings. To update the plugin, use
+`claude plugin update shipyard-hosted@shipyard` or `codex plugin marketplace upgrade shipyard`. To remove it, use
+`claude plugin uninstall shipyard-hosted@shipyard` or `codex plugin remove shipyard-hosted@shipyard`.
 
 - **Cursor: set Auto-Run first.** With Auto-Run on and MCP Tools Protection off, Cursor runs every Shipyard tool
   without asking, including ones that stop or rebuild environments. In Cursor Settings, Auto-Run, choose **Ask Every
@@ -93,13 +95,11 @@ server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settin
 ## Update and uninstall
 
 - Update the CLI: `brew upgrade shipyard`, or `shipyard upgrade` on CLI 1.10.0 or later.
-- Update the plugin: `claude plugin update shipyard@shipyard` (or `shipyard-hosted@shipyard`), or
-  `codex plugin marketplace upgrade shipyard`. In
+- Update the plugin: `claude plugin update shipyard@shipyard`, or `codex plugin marketplace upgrade shipyard`. In
   Cursor, run `cursor-agent plugin marketplace update shipyard`, then reinstall from Cursor Settings, Plugins. In Kiro,
   uninstall the power and import it from GitHub again: Kiro's update check can fail with "No name was provided for
   author".
-- Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard` (for the hosted
-  plugin, `shipyard-hosted@shipyard` in both), or remove it from the
+- Remove it: `claude plugin uninstall shipyard@shipyard`, `codex plugin remove shipyard@shipyard`, or remove it from the
   Kiro Powers panel or Cursor's plugin settings (then `cursor-agent plugin marketplace remove shipyard`).
 
 ## Troubleshooting
