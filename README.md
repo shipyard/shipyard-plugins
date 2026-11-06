@@ -38,6 +38,17 @@ that tells the agent how to use it safely.
 
 Restart the session afterwards and ask "list my Shipyard environments".
 
+- **Cursor: set Auto-Run first.** With Auto-Run on and MCP Tools Protection off, Cursor runs every Shipyard tool
+  without asking, including ones that stop or rebuild environments. In Cursor Settings, Auto-Run, choose **Ask Every
+  Time** or turn on **MCP Tools Protection**. The plugin's server runs in the Cursor app only: `cursor-agent` doesn't
+  load it.
+- **Use the plugin or a hand-added server, not both.** If you added `shipyard mcp serve` to your client yourself,
+  remove it first (for example `claude mcp remove shipyard`). Codex is the exception: a `[mcp_servers.shipyard]` entry
+  replaces the plugin's server.
+- **If the server doesn't start** with "command not found", your client can't see `shipyard` on its `PATH` (common for
+  desktop apps opened from the Dock). The plugin can't change that command, so add the server by hand with the
+  absolute path from `which shipyard`, as in the [MCP guide](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#connecting-a-client).
+
 ## What it can do, and what it sends
 
 The MCP server calls the Shipyard API (`https://shipyard.build`) with your token. It reads and changes only the
@@ -80,17 +91,6 @@ Install one of the two plugins, not both: each defines a server named `shipyard`
 To disconnect, remove the server or sign out of it in your client's MCP settings. To update the plugin, use
 `claude plugin update shipyard-hosted@shipyard` or `codex plugin marketplace upgrade shipyard`. To remove it, use
 `claude plugin uninstall shipyard-hosted@shipyard` or `codex plugin remove shipyard-hosted@shipyard`.
-
-- **Cursor: set Auto-Run first.** With Auto-Run on and MCP Tools Protection off, Cursor runs every Shipyard tool
-  without asking, including ones that stop or rebuild environments. In Cursor Settings, Auto-Run, choose **Ask Every
-  Time** or turn on **MCP Tools Protection**. The plugin's server runs in the Cursor app only: `cursor-agent` doesn't
-  load it.
-- **Use the plugin or a hand-added server, not both.** If you added `shipyard mcp serve` to your client yourself,
-  remove it first (for example `claude mcp remove shipyard`). Codex is the exception: a `[mcp_servers.shipyard]` entry
-  replaces the plugin's server.
-- **If the server doesn't start** with "command not found", your client can't see `shipyard` on its `PATH` (common for
-  desktop apps opened from the Dock). The plugin can't change that command, so add the server by hand with the
-  absolute path from `which shipyard`, as in the [MCP guide](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#connecting-a-client).
 
 ## Update and uninstall
 
