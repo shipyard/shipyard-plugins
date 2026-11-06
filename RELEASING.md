@@ -38,7 +38,7 @@ installed version still matches. CI doesn't check this yet; reviewers do. Change
 | Claude plugin directory listing | _unassigned_ |
 | Cursor Marketplace listing | _unassigned_ |
 | Kiro Powers listing | _unassigned_ |
-| OpenAI (Codex) plugin directory listing | _unassigned_ (needs the hosted server, SHIP-258) |
+| OpenAI (Codex) plugin directory listing | _unassigned_ |
 | Support inbox (support@shipyard.build) | _unassigned_ |
 
 Listing owners hold the publisher account for their marketplace and submit every update to it. Record who owns each
@@ -54,7 +54,8 @@ account here, by GitHub handle, not by email or credential.
    `COMPATIBILITY.md` in the same PR. Those are the only places that state the minimum. The skill (`skills/shipyard/SKILL.md`) only gives
    version-specific advice, such as `shipyard upgrade` needing CLI 1.10.0, so check that advice still holds.
 3. Merge after review and a green CI run.
-4. Tag the merge commit and publish a GitHub Release with the changes:
+4. Tag the merge commit and publish a GitHub Release with the changes. The root plugin's tags are `vX.Y.Z`; the hosted
+   plugin's are `shipyard-hosted-vX.Y.Z`, since its versions are separate and `v0.1.0` is already taken:
 
    ```bash
    git tag -a vX.Y.Z -m "vX.Y.Z" <merge-commit> && git push origin vX.Y.Z
