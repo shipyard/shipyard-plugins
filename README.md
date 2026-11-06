@@ -84,7 +84,7 @@ plugin above, or the Shipyard dashboard, for those.
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
 
-Cursor and Kiro haven't been tested with this plugin yet.
+This plugin is new: signing in through it, in any client, and using it in Cursor or Kiro haven't been tested yet.
 
 Install one of the two plugins, not both: each defines a server named `shipyard`.
 

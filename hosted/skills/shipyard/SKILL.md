@@ -82,29 +82,29 @@ and `remove_repos` unlinks repos. Show the user exactly what will change and wai
 Run this after a push, after `create_application`, and after an `updated` or `build_in_progress` answer. `ready` and a
 matching commit aren't enough: right after a change, the old deploy can show both before the new build appears.
 
-1. Record what you're checking: the pushed SHA (`git rev-parse HEAD`) and the time you pushed or made the request. If
-   you need the environment's ID, call `get_environments` with `repo_name` and `branch`, and match `projects[]` on
-   `repo_name`.
+1. Before you push or call the tool, note the time. Afterwards, record the SHA you expect (`git rev-parse HEAD`), and
+   call `get_environments` with `repo_name` and `branch`, matching `projects[]` on `repo_name`, for the environment's ID.
 2. Wait about 30 seconds: a new build takes a moment to appear, and answers can be cached for that long.
-3. Call `get_build_history`. Builds are newest first; read the first one. If it was queued before your push or request,
-   there's no new build yet: check again, and after 2 minutes say that no build appeared.
+3. Call `get_build_history`. Builds are newest first; read the first one. If it was queued before the time you noted,
+   there's no new build yet: check again, and after 2 minutes say that no build appeared. After `build_in_progress`,
+   skip this: the build you're waiting for is the earlier one, so read the first build whatever its age.
 4. Act on its `status`:
 
 | `status` | What to do |
 |---|---|
-| `RUNNING` | If its `commit_hash` for this repo is the SHA, go to step 5. If not, it's serving an older commit: say so. |
+| `RUNNING` | If its `commit_hash` for this repo is the SHA, go to step 5. If not, it's serving a different commit: say which. |
 | `FAILED`, or `failure` is set | `get_failure_details`, then `get_build_logs` for the failing service. Report it as failed. |
 | `CANCELED`, `RETIRED`, `SHORT_CIRCUIT` | It won't become ready by itself. Tell the user and stop. |
 | Anything else | It's still building. Check again, at most once every 5 seconds, and after 15 minutes say it's still building. |
 
-5. Call `get_environments` and match `projects[]` on `repo_name`. When `ready` is true and `commit_hash` is the SHA, it
+5. Call `get_environments` with `repo_name` and `branch`, and match `projects[]` on `repo_name`. When `ready` is true and `commit_hash` is the SHA, it
    serves the change. Use `url`, and `bypass_token` when there is one, sent as the `shipyard_token` cookie, never on
    the URL. If `ready` stays false, keep checking within the same 15 minutes.
 6. After checking the app itself, call `get_build_history` again. If a newer build has appeared, discard the result and
    start again from step 3.
 
 Report it as working only when it serves the pushed commit and what you checked passed. Otherwise say what's true:
-still building, failed, stopped, or serving an older commit.
+still building, failed, stopped, or serving a different commit.
 
 ## Rules
 
