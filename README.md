@@ -38,6 +38,23 @@ that tells the agent how to use it safely.
 
 Restart the session afterwards and ask "list my Shipyard environments".
 
+## What it can do, and what it sends
+
+The MCP server calls the Shipyard API (`https://shipyard.build`) with your token. It reads and changes only the
+environments, services, volumes, snapshots and environment variables your token can access. It sends nothing anywhere
+else. The CLI plugin itself contains no code; it only tells your agent how to start `shipyard mcp serve`.
+
+- Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
+  values masked).
+- Other tools stop, rebuild, restart, update branches, set or delete environment variables, reset or restore volumes,
+  and create environments. Claude Code and Codex ask before using them unless you allow them. Cursor asks only if
+  Auto-Run is set as above. Kiro's CLI runs tools without asking; see the per-client settings below.
+- `exec_service` (run a command in a container) is **off** unless you enable it.
+
+For unattended agents, allow only the read-only tools. The plugin's tools have different names from a hand-added
+server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settings are in
+[Permissions and least privilege](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#permissions-and-least-privilege).
+
 ## Hosted plugin: nothing to install
 
 `shipyard-hosted` connects your agent to Shipyard's hosted MCP server (`https://mcp.shipyard.build/mcp`) instead of
@@ -74,23 +91,6 @@ To disconnect, remove the server or sign out of it in your client's MCP settings
 - **If the server doesn't start** with "command not found", your client can't see `shipyard` on its `PATH` (common for
   desktop apps opened from the Dock). The plugin can't change that command, so add the server by hand with the
   absolute path from `which shipyard`, as in the [MCP guide](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#connecting-a-client).
-
-## What it can do, and what it sends
-
-The MCP server calls the Shipyard API (`https://shipyard.build`) with your token. It reads and changes only the
-environments, services, volumes, snapshots and environment variables your token can access. It sends nothing anywhere
-else. The CLI plugin itself contains no code; it only tells your agent how to start `shipyard mcp serve`.
-
-- Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
-  values masked).
-- Other tools stop, rebuild, restart, update branches, set or delete environment variables, reset or restore volumes,
-  and create environments. Claude Code and Codex ask before using them unless you allow them. Cursor asks only if
-  Auto-Run is set as above. Kiro's CLI runs tools without asking; see the per-client settings below.
-- `exec_service` (run a command in a container) is **off** unless you enable it.
-
-For unattended agents, allow only the read-only tools. The plugin's tools have different names from a hand-added
-server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settings are in
-[Permissions and least privilege](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#permissions-and-least-privilege).
 
 ## Update and uninstall
 
