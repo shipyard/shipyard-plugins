@@ -124,7 +124,7 @@ Known client issues:
 | Client | Marketplace | State | Blocker |
 |---|---|---|---|
 | Claude Code | Claude plugin directory | Not submitted | Icon, privacy policy and ToS update, listing owner |
-| Codex | OpenAI plugin directory | Blocked | Accepts only hosted HTTPS+OAuth servers. The hosted server is live; it still needs the `shipyard-hosted` plugin merged and tested (SHIP-558), plus OpenAI business and domain verification |
+| Codex | OpenAI plugin directory | Blocked | Accepts only hosted HTTPS+OAuth servers. The hosted server is live; it still needs the `shipyard-hosted` plugin tested in Codex (SHIP-558), plus OpenAI business and domain verification |
 | Cursor | Cursor Marketplace | Not submitted | Icon, privacy policy and ToS update, listing owner |
 | Kiro | Kiro Powers | Not submitted | Icon, privacy policy and ToS update, listing owner, Publisher Terms accepted |
 
