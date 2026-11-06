@@ -18,7 +18,7 @@ This file summarizes them and records what has been verified.
 
 ## Distribution and install
 
-Every client installs the same plugin from this repository's `main` branch. The plugin contains no code: it starts
+This page covers the root plugin. Every client installs it from this repository's `main` branch. It contains no code: it starts
 `shipyard mcp serve`, so the [Shipyard CLI](https://github.com/shipyard/shipyard-cli#installation) must be on the
 `PATH` the client sees.
 
@@ -61,12 +61,9 @@ The same in every client. The plugin never asks for or stores a token, and CI on
 - **Shared machines, CI, or one org only:** an org API key, set as `SHIPYARD_API_TOKEN` in the client's per-user MCP
   config. That needs a hand-added server, not the plugin.
 
-Known issue: `shipyard login` passes the token in a URL, so it can land in browser history
-([SHIP-463](https://linear.app/stackgen/issue/SHIP-463)).
-
 ## Permissions
 
-The CLI (1.10.0+) marks 14 tools read-only, 15 destructive and 4 as adding state only. `exec_service` is off unless
+CLI 1.11.0 marks 14 tools read-only, 15 destructive and 4 as adding state only. These hints arrived in 1.10.0. `exec_service` is off unless
 enabled in `~/.shipyard/config.yaml`. How each client uses that:
 
 | Client | Plugin server name | Asks before destructive tools? | Read-only recipe for unattended use |
@@ -103,15 +100,16 @@ The same for every client:
 ## Validation
 
 Each run used a clean profile, installed the plugin from GitHub, ran a read-only workflow (list orgs, list
-environments) and checked that a destructive tool was refused or asked first, then uninstalled. Destructive checks use
-a nonexistent environment ID only.
+environments) and uninstalled. Where a row says so, it also checked that a destructive tool was refused or asked first.
+Those checks use a nonexistent environment ID. The one exception is the Cursor Auto-Run issue below, found on a real
+environment that was already stopped.
 
 | Client | Last validated | CLI | Result |
 |---|---|---|---|
 | Claude Code | 2026-10-29 | 1.10.0 | Reads run with `mcp__plugin_shipyard_shipyard__get_*` allowed; `stop_environment` refused |
 | Codex | 2026-10-29 | 1.10.0 | Skill loads; `get_orgs` runs in `writes` mode; `stop_environment` refused ("requires approval") |
 | Cursor | 2026-11-03 | 1.10.0 | Install, reads and skill work; with Ask Every Time, `stop_environment` asks first |
-| Kiro | 2026-11-03 | 1.10.0 | GitHub import, reads and uninstall work |
+| Kiro | 2026-11-03 | 1.10.0 | GitHub import, reads and uninstall work; destructive tools not checked |
 
 Known client issues:
 
@@ -126,7 +124,7 @@ Known client issues:
 | Client | Marketplace | State | Blocker |
 |---|---|---|---|
 | Claude Code | Claude plugin directory | Not submitted | Icon, privacy policy and ToS update, listing owner |
-| Codex | OpenAI plugin directory | Blocked | Accepts only hosted HTTPS+OAuth servers: needs the hosted server live (SHIP-558), plus OpenAI business and domain verification |
+| Codex | OpenAI plugin directory | Blocked | Accepts only hosted HTTPS+OAuth servers. The hosted server is live; it still needs the `shipyard-hosted` plugin merged and tested (SHIP-558), plus OpenAI business and domain verification |
 | Cursor | Cursor Marketplace | Not submitted | Icon, privacy policy and ToS update, listing owner |
 | Kiro | Kiro Powers | Not submitted | Icon, privacy policy and ToS update, listing owner, Publisher Terms accepted |
 
