@@ -111,6 +111,7 @@ touched `~/.kiro/powers/installed.json`.
 ## Support, privacy and security
 
 - Docs: [Shipyard MCP guide](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md)
+- Supported clients, versions and validation status: [COMPATIBILITY.md](COMPATIBILITY.md)
 - Support: [support@shipyard.build](mailto:support@shipyard.build)
 - Security reports: [security@shipyard.build](mailto:security@shipyard.build), see
   [shipyard.build/security](https://shipyard.build/security/)
