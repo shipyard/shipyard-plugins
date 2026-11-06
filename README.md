@@ -41,19 +41,22 @@ Restart the session afterwards and ask "list my Shipyard environments".
 ## Hosted plugin: nothing to install
 
 `shipyard-hosted` connects your agent to Shipyard's hosted MCP server (`https://mcp.shipyard.build/mcp`) instead of
-running the CLI. The first time a tool runs, your client opens Shipyard in your browser: sign in, pick the
-organization the agent works in, and allow access. Your client keeps the token; the plugin holds none.
+running the CLI. After installing, connect it from your client: `/mcp` in Claude Code, `codex mcp login shipyard` in
+Codex. Your browser opens Shipyard: sign in, pick the organization the agent works in, and allow access. Your client
+keeps the token; the plugin holds none.
 
-It adds an app to Shipyard from a pushed GitHub branch and checks its environments, builds and failures. It can't
-stop, rebuild or restart environments, set env vars, read service logs or run commands; use the CLI plugin above, or
-the Shipyard dashboard, for those.
+It adds an app to Shipyard from a pushed GitHub branch, reconfigures it, and checks its environments, builds and
+failures. A reconfiguration can rebuild the app, restart a stopped one and unlink repos, and your agent should ask
+first: the plugin's skill tells it to, but your client decides whether it can run without asking. There's no tool to
+stop or restart an environment, rebuild on request, set env vars, read service logs or run commands; use the CLI
+plugin above, or the Shipyard dashboard, for those.
 
 | Client | Install |
 |---|---|
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
-| Kiro | Powers panel: install from GitHub URL `https://github.com/shipyard/shipyard-plugins/tree/main/hosted` |
-| Cursor | Settings, Plugins: add `hosted` from this repository |
+
+Cursor and Kiro haven't been tested with this plugin yet.
 
 Install one of the two plugins, not both: each defines a server named `shipyard`.
 
