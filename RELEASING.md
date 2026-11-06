@@ -5,14 +5,17 @@ no credentials and no account details. Those stay with the account owners listed
 
 ## What gets released
 
-The plugin is two parts, released separately:
+The plugin has these parts, released separately:
 
 | Part | Where it lives | Released by |
 |---|---|---|
 | The plugin: manifests, `mcp.json`/`.mcp.json`, `skills/` | This repository | A merge to `main`, then a version tag |
+| The hosted plugin: `hosted/`, with its own manifests and skill | This repository | A merge to `main`, then a version tag |
 | The MCP server (`shipyard mcp serve`) | [shipyard/shipyard-cli](https://github.com/shipyard/shipyard-cli) | A CLI release (tag `v*`), which also updates the Homebrew tap |
+| The hosted MCP server (`https://mcp.shipyard.build/mcp`) | [shipyard/shipyard-cli](https://github.com/shipyard/shipyard-cli) | An image built from a CLI release tag and installed by hand; see [Deploying the hosted server](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#deploying-the-hosted-server) |
 
-The plugin contains no code and starts whatever `shipyard` binary is on the user's `PATH`. Most behaviour changes
+The root plugin contains no code and starts whatever `shipyard` binary is on the user's `PATH`, and the hosted plugin
+only names the hosted server's URL. Most behaviour changes
 (tools, annotations, instructions) therefore ship as **CLI releases**, not plugin releases. Release the plugin when
 the manifests, server definition or skill change.
 
@@ -20,8 +23,8 @@ the manifests, server definition or skill change.
 upgrade shipyard` picks up whatever is on `main`, and Claude Code reads the marketplace from it. Treat every merge to
 `main` as a release. Branch protection requires a code-owner review and the `Manifests` and `Secret scan` checks.
 
-So any PR that changes the manifests, `mcp.json`/`.mcp.json` or `skills/` must bump the version, even a one-line skill
-fix. Without a bump, Codex users get the change on their next update, but Claude Code users never do, because their
+So any PR that changes the manifests, `mcp.json`/`.mcp.json` or `skills/`, at the root or in `hosted/`, must bump that
+plugin's version, even a one-line skill fix. Without a bump, Codex users get the change on their next update, but Claude Code users never do, because their
 installed version still matches. CI doesn't check this yet; reviewers do. Changes to `README.md`, `RELEASING.md` or
 `.github/` don't need a bump.
 
@@ -31,6 +34,7 @@ installed version still matches. CI doesn't check this yet; reviewers do. Change
 |---|---|
 | Plugin repository (merges, tags) | @daniellle, @akshaykalia (`CODEOWNERS`) |
 | CLI releases and the Homebrew tap | @akshaykalia |
+| Hosted MCP server deploys | @akshaykalia |
 | Claude plugin directory listing | _unassigned_ |
 | Cursor Marketplace listing | _unassigned_ |
 | Kiro Powers listing | _unassigned_ |
@@ -42,12 +46,12 @@ account here, by GitHub handle, not by email or credential.
 
 ## Releasing a plugin version
 
-1. Open a PR that bumps `version` in `plugin.json` and `.claude-plugin/plugin.json` (and `marketplace.json`, if it
-   sets one). CI fails if they differ. Use semver: patch for wording and skill fixes, minor for new behaviour or a
+1. Open a PR that bumps `version` in the plugin's `plugin.json` and `.claude-plugin/plugin.json` (`hosted/` has its own
+   pair), and in `marketplace.json`, if it sets one. CI fails if they differ. Use semver: patch for wording and skill fixes, minor for new behaviour or a
    higher minimum CLI version, major for changes that need user action.
    Bump the version in every release: Claude Code uses it to decide whether an installed plugin is out of date.
-2. If the release needs a newer CLI, release the CLI first and raise the minimum version in `README.md` in the same
-   PR. `README.md` is the only place that states the minimum. The skill (`skills/shipyard/SKILL.md`) only gives
+2. If the release needs a newer CLI, release the CLI first and raise the minimum version in `README.md` and
+   `COMPATIBILITY.md` in the same PR. Those are the only places that state the minimum. The skill (`skills/shipyard/SKILL.md`) only gives
    version-specific advice, such as `shipyard upgrade` needing CLI 1.10.0, so check that advice still holds.
 3. Merge after review and a green CI run.
 4. Tag the merge commit and publish a GitHub Release with the changes:
@@ -73,6 +77,8 @@ account here, by GitHub handle, not by email or credential.
   marketplace lets you unlist or restore a previous version, the listing owner does that while review is pending.
 - **CLI:** follow [Rolling back](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#rolling-back) in the
   MCP guide. A bad CLI release is fixed by a new CLI release; the plugin does not pin a CLI version.
+- **Hosted MCP server:** release the previous tag, as in
+  [Deploying the hosted server](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#deploying-the-hosted-server).
 - **Exposed secret:** if a credential ever lands in this repository, rotate it first, then remove it. Rewriting history
   does not un-publish it, and marketplaces may have cached the content.
 
@@ -85,6 +91,7 @@ account here, by GitHub handle, not by email or credential.
 | Marketplace review results and takedown notices | Each publisher account's email and dashboard | Listing owner |
 | CI health on `main` | The `Validate` workflow | Plugin repository owners |
 | CLI release health | shipyard-cli's `Release` and weekly `release-check` workflows | CLI release owner |
+| Hosted MCP server health | Its pods and ingress logs, and `https://mcp.shipyard.build/mcp` answering 401 without a token | Hosted server deploy owner |
 | Known client bugs that need docs workarounds | [kirodotdev/Kiro#11924](https://github.com/kirodotdev/Kiro/issues/11924) (Kiro `installed.json`) | @daniellle |
 
 ## Support routing
