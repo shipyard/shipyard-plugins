@@ -36,8 +36,8 @@ Claude Desktop and other MCP clients aren't plugin targets. Add `shipyard mcp se
 
 | | Requirement |
 |---|---|
-| Plugin | `v0.1.0`. Versioned with semver in `plugin.json` and `.claude-plugin/plugin.json`; see [RELEASING.md](RELEASING.md) |
-| Shipyard CLI | 1.9.0 or later; **1.10.0 or later recommended** (adds tool hints, `shipyard upgrade`, stale-CLI notice) |
+| Plugin | `v0.2.0`. Versioned with semver in `plugin.json` and `.claude-plugin/plugin.json`; see [RELEASING.md](RELEASING.md) |
+| Shipyard CLI | **1.11.0 or later** to add an app from a repo (`plan_application`, `create_application`, `update_application`). 1.9.0 or later reads and manages existing environments; 1.10.0 adds tool hints, `shipyard upgrade` and the stale-CLI notice |
 | MCP protocol | `2025-06-18`, `2025-03-26`, `2024-11-05` |
 
 Client versions tested:
