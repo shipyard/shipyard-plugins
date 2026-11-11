@@ -10,7 +10,7 @@
     {
       "name": "shipyard",
       "source": "./",
-      "description": "Manage Shipyard ephemeral environments: list, inspect, rebuild, debug and verify changes against preview environments."
+      "description": "Put a repo on Shipyard and manage its ephemeral environments: get set up, write a compose file, create the app, then list, inspect, rebuild, debug and verify changes against preview environments."
     },
     {
       "name": "shipyard-hosted",

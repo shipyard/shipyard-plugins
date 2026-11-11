@@ -1,16 +1,17 @@
 # Shipyard plugin for coding agents
 
 Connect your coding agent to [Shipyard](https://shipyard.build) ephemeral environments. With this plugin, Claude Code,
-Codex, Cursor or Kiro can list your environments, read build history and service logs, rebuild or restart
-environments, manage volume snapshots, and verify a pushed change against its preview environment before you merge.
+Codex, Cursor or Kiro can put a repo on Shipyard, list your environments, read build history and service logs, rebuild
+or restart environments, manage volume snapshots, and verify a pushed change against its preview environment before
+you merge.
 
 The plugin runs the Shipyard MCP server that ships with the Shipyard CLI (`shipyard mcp serve`) and adds a short skill
 that tells the agent how to use it safely.
 
 ## Requirements
 
-1. **Shipyard CLI 1.9.0 or later**, on the `PATH` your agent sees. 1.10.0 or later is recommended: it labels each
-   tool as read-only or destructive, which some clients use to decide when to ask you.
+1. **Shipyard CLI 1.11.0 or later**, on the `PATH` your agent sees. 1.11.0 adds the tools that create an app from a
+   repo. Older versions from 1.9.0 can still read and manage existing environments.
 
    ```bash
    brew tap shipyard/tap && brew install shipyard
@@ -25,7 +26,27 @@ that tells the agent how to use it safely.
    shipyard login
    ```
 
-   The plugin never asks for or stores your token. The CLI keeps it in `~/.shipyard/config.yaml`.
+   The plugin never asks for or stores your token. The CLI keeps it in `~/.shipyard/config.yaml`. If you log in while
+   your agent is open, restart the Shipyard MCP server in your client afterwards: it reads the token when it starts.
+
+You don't have to do these steps first. Ask your agent to "put this repo on Shipyard" and it walks you through them,
+as below.
+
+## Getting started from your agent
+
+Open your repo and ask your agent to "put this repo on Shipyard". The skill tells it to:
+
+1. Check that the Shipyard CLI is installed and current, and offer to install or upgrade it.
+2. Send you to [shipyard.build/signup](https://shipyard.build/signup) if you don't have an account, then run
+   `shipyard login`, which opens your browser. You never paste a token into the chat.
+3. Send you a link to install the Shipyard GitHub app when your org needs it.
+4. Look for a Docker Compose file. If there isn't one, it analyzes the repo, writes one with Shipyard's routing labels,
+   checks it with `docker compose config` (and `docker compose up` if Docker is running), and shows it to you. It
+   never overwrites a compose file you already have.
+5. Show you the plan (app name, services, routes and the environment variables it needs), create the app after you
+   confirm, and watch the first build until the environment is ready.
+
+It asks before it installs anything, commits, pushes or creates the app.
 
 ## Install
 
@@ -57,8 +78,8 @@ else. The CLI plugin itself contains no code; it only tells your agent how to st
 
 - Read-only tools list environments, builds, services, logs, volumes, snapshots and environment variables (hidden
   values masked).
-- Other tools stop, rebuild, restart, update branches, set or delete environment variables, reset or restore volumes,
-  and create environments. Claude Code and Codex ask before using them unless you allow them. Cursor asks only if
+- Other tools create and reconfigure apps, stop, rebuild, restart, update branches, set or delete environment
+  variables, reset or restore volumes, and create environments. Claude Code and Codex ask before using them unless you allow them. Cursor asks only if
   Auto-Run is set as above. Kiro's CLI runs tools without asking; see the per-client settings below.
 - `exec_service` (run a command in a container) is **off** unless you enable it.
 

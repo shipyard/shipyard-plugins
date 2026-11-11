@@ -12,6 +12,7 @@ The plugin has these parts, released separately:
 | The plugin: manifests, `mcp.json`/`.mcp.json`, `skills/` | This repository | A merge to `main`, then a version tag |
 | The hosted plugin: `hosted/`, with its own manifests and skill | This repository | A merge to `main`, then a version tag |
 | The MCP server (`shipyard mcp serve`) | [shipyard/shipyard-cli](https://github.com/shipyard/shipyard-cli) | A CLI release (tag `v*`), which also updates the Homebrew tap |
+| The Kiro copy of the root plugin: `shipyard/` in Kiro's powers repo | [kirodotdev/powers](https://github.com/kirodotdev/powers) | A PR to that repo after each root plugin release, reviewed and merged by Kiro's team |
 | The hosted MCP server (`https://mcp.shipyard.build/mcp`) | [shipyard/shipyard-cli](https://github.com/shipyard/shipyard-cli) | An image built from a CLI release tag and installed by hand; see [Deploying the hosted server](https://github.com/shipyard/shipyard-cli/blob/main/docs/mcp.md#deploying-the-hosted-server) |
 
 The root plugin contains no code and starts whatever `shipyard` binary is on the user's `PATH`, and the hosted plugin
@@ -65,6 +66,11 @@ account here, by GitHub handle, not by email or credential.
    Never move or delete a published tag.
 5. Submit the update to every curated listing (Cursor reviews every update by hand). Record the submission and its
    review state on the release's Linear issue.
+
+   For Kiro, open a PR to [kirodotdev/powers](https://github.com/kirodotdev/powers) that replaces its `shipyard/`
+   folder with this release's `plugin.json`, `mcp.json` and `skills/`, unchanged. Its README entry changes only if the
+   description does. The two copies must stay identical: a fix asked for in Kiro's review lands here first, as a new
+   release, then in the PR. Kiro's team decides when it merges.
 6. Smoke-test from each listing in a clean profile: install, ask "list my Shipyard environments", check that a
    destructive tool asks first, then uninstall.
 
