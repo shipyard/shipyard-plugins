@@ -16,7 +16,7 @@
   .claude-plugin/plugin.json, and the marketplace lists each plugin from its
   own folder.
 - Every skills/*/SKILL.md has YAML frontmatter with a name matching its folder
-  and a description.
+  and a description, and every `references/...` file it names exists next to it.
 
 Exits 1 with one line per problem.
 """
@@ -65,6 +65,8 @@ TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token", re.IGNORECAS
 # Words that are fine in prose, so they're checked only in keys and server definitions.
 TOKEN_WORD = re.compile(r"token|authorization|bearer", re.IGNORECASE)
 ARG = re.compile(r"^-{0,2}[a-z][a-z0-9-]*$")
+# A skill's pointer to a file it tells the agent to read, like `references/compose.md`.
+SKILL_REF = re.compile(r"references/[A-Za-z0-9_./-]+\.md")
 
 errors = []
 
@@ -173,7 +175,11 @@ for plugin in PLUGINS:
     skills += found
 for skill in skills:
     rel = skill.relative_to(ROOT)
-    parts = skill.read_text().split("---", 2)
+    text = skill.read_text()
+    for ref in sorted(set(SKILL_REF.findall(text))):
+        if not (skill.parent / ref).is_file():
+            errors.append(f"{rel}: names {ref}, which doesn't exist next to it")
+    parts = text.split("---", 2)
     if len(parts) < 3 or parts[0].strip():
         errors.append(f"{rel}: must start with YAML frontmatter between --- lines")
         continue

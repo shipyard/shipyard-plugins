@@ -15,7 +15,7 @@
     {
       "name": "shipyard-hosted",
       "source": "./hosted",
-      "description": "Add your app to Shipyard and check its preview environments, with nothing to install: sign in with Shipyard and pick an organization."
+      "description": "Put your repo on Shipyard and check its preview environments, with nothing to install: sign in with Shipyard, pick an organization, and the agent writes a Docker Compose file if your repo has none."
     }
   ]
 }

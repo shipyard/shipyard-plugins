@@ -79,12 +79,16 @@ first: the plugin's skill tells it to, but your client decides whether it can ru
 stop or restart an environment, rebuild on request, set env vars, read service logs or run commands; use the CLI
 plugin above, or the Shipyard dashboard, for those.
 
+New to Shipyard? Open a repo that's pushed to GitHub and ask your agent to "put this repo on Shipyard". The skill walks
+you through connecting and signing up, and if the repo has no Docker Compose file, it analyzes the repo, writes one
+with you, and can check it locally with Docker before anything is committed or pushed.
+
 | Client | Install |
 |---|---|
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
 
-This plugin is new: signing in through it, in any client, and using it in Cursor or Kiro haven't been tested yet.
+Signing in and reading environments from Kiro has been tested (SHIP-631). Cursor hasn't been tested yet.
 
 Install one of the two plugins, not both: each defines a server named `shipyard`.
 
