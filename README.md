@@ -81,7 +81,7 @@ plugin above, or the Shipyard dashboard, for those.
 
 New to Shipyard? Open a repo that's pushed to GitHub and ask your agent to "put this repo on Shipyard". The skill walks
 you through connecting and signing up, and if the repo has no Docker Compose file, it analyzes the repo, writes one
-with you, and checks it with Docker Compose before anything is committed or pushed.
+with you, and checks it with Docker Compose, when Docker is available, before anything is committed or pushed.
 
 | Client | Install |
 |---|---|
