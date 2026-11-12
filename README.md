@@ -87,6 +87,7 @@ with you, and can check it locally with Docker before anything is committed or p
 |---|---|
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
+| Kiro | In the Powers panel, choose **Add Custom Power**, then **Import power from GitHub**, and enter `https://github.com/shipyard/shipyard-plugins/tree/main/hosted` |
 
 Signing in and reading environments from Kiro has been tested (SHIP-631). Cursor hasn't been tested yet.
 
