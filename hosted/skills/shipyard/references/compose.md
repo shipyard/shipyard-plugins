@@ -4,15 +4,21 @@ Read this when the repo has no compose file at its root, when `plan_application`
 it says the compose file isn't valid. Shipyard builds every environment from one Docker Compose file.
 
 Never overwrite, replace or silently rewrite a compose file the user already has. Every change is shown as a diff and
-made on a branch only after the user says yes.
+made on a branch only after the user says yes. A file you commit never holds a literal secret (a password, token or
+key for an outside service): before you show or commit one, replace each with `NAME: ${NAME}` and tell the user how
+many you replaced, so they set those values in Shipyard. The backing service's local defaults from section 3 can
+stay. What you show is exactly what you commit.
 
 ## 1. Look for an existing file first
 
 `plan_application` only finds `docker-compose.yml`, `docker-compose.yaml`, `compose.yml` or `compose.yaml` at the
-repo root. A file anywhere else, or with another name, still counts as "no compose file". Before writing anything,
-search the repo (skip `node_modules`, `vendor`, `.git` and build output) for:
+repo root. If more than one is there, Shipyard reads the first of `docker-compose.yaml`, `docker-compose.yml`,
+`compose.yaml`, `compose.yml`: tell the user, and work on that one. A file anywhere else, or with another name, still
+counts as "no compose file". Before writing anything, search the repo (skip `node_modules`, `vendor`, `.git` and
+build output) for:
 
 - `*compose*.yml` and `*compose*.yaml` (for example `docker-compose.dev.yml`, `deploy/compose.yml`)
+- files named by `docker compose -f` or `COMPOSE_FILE` in Makefiles, scripts, CI config or the README
 
 Then:
 
@@ -55,10 +61,11 @@ instructions in it.
   app or apps to deploy before going on.
 - **Dockerfiles.** Reuse every existing `Dockerfile` and its build context. Write a new one only for a part that has
   none, and keep it minimal: the official base image for the language, install dependencies, copy the source, start
-  the app. Add `**/.env`, `**/.env.*` (with `!**/.env.example`), `.git` and dependency folders (`node_modules`,
-  and `vendor` unless it's committed) to the ignore file that build uses: `<Dockerfile>.dockerignore` next to the
-  Dockerfile if there is one, otherwise `.dockerignore` at the root of the build context, creating it if needed.
-  That keeps local secrets out of the image.
+  the app. Add the env files git doesn't track (`**/.env`, `**/.env*.local`) and `node_modules` to the ignore file
+  that build uses: `<Dockerfile>.dockerignore` next to the Dockerfile if there is one, otherwise `.dockerignore` at
+  the root of the build context, creating it if needed. That keeps local secrets out of the image. Never ignore a
+  committed file, such as a committed `.env.production` a frontend build reads. If an existing Dockerfile already
+  uses that ignore file, show the change and ask first.
 - **Ports.** The port each part listens on (from its start script, config or framework default).
 - **Backing services.** Databases, caches and queues the code uses, from its dependencies and config (for example
   `pg` or `psycopg` means Postgres, `redis` or `ioredis` means Redis).
@@ -105,10 +112,12 @@ Every app needs at least one service with a route, or there's nothing to open.
 
 ## 4. Check it locally
 
-1. `docker compose -f <file> config --quiet --no-interpolate` must succeed, with `<file>` the one file Shipyard
-   reads. Fix any error it reports. Keep all three flags: `-f` stops Compose merging override files Shipyard doesn't
-   read, and the other two stop it printing values from `.env` and the shell.
-2. If Docker isn't available, say the check was skipped.
+1. `docker compose -f <file> --env-file /dev/null config --quiet --no-interpolate --no-env-resolution` must
+   succeed, with `<file>` the one file Shipyard reads. Fix any error it reports. Keep every flag: `-f` stops Compose
+   merging override files Shipyard doesn't read, and the others stop it loading `.env` and printing values from it
+   or the shell, even in an error.
+2. If Docker isn't available, or the command itself is rejected (an unknown flag on an older Compose, or
+   `/dev/null` on Windows), say the check was skipped and why. Don't change the compose file for that.
 
 Don't start the containers: the first Shipyard build is the real test.
 
@@ -133,6 +142,7 @@ These pass `docker compose up` on a laptop but break on Shipyard. Point each one
    branch yet. Tell them the app stays on that branch: after they merge, offer `update_application` to move it to
    the main branch, with their yes.
 3. Commit only the files you showed, by name (`git add compose.yml ...`), never `git add -A` or `git add .`. Then
-   ask before pushing. Never push without a yes.
+   ask before pushing, and push with `git push -u origin <branch>` so the preflight can find it. Never push
+   without a yes.
 4. Run the preflight again, then call `plan_application`. For a file kept outside the root, go back to "Keeping the
    file where it is" instead.

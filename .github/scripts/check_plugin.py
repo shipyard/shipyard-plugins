@@ -16,7 +16,7 @@
   .claude-plugin/plugin.json, and the marketplace lists each plugin from its
   own folder.
 - Every skills/*/SKILL.md has YAML frontmatter with a name matching its folder
-  and a description, and every `references/...` file it names exists next to it.
+  and a description, and every `references/....md` file it names exists next to it.
 
 Exits 1 with one line per problem.
 """

@@ -36,7 +36,8 @@ Shipyard dashboard.
    - After `git fetch`, the branch is pushed and `git rev-parse HEAD` equals `git rev-parse @{u}`.
    - `git status --porcelain` is empty: no modified tracked files and no untracked files that aren't ignored.
 
-   If something isn't pushed, ask before you commit or push anything. Never push without the user's yes.
+   If something isn't pushed, ask before you commit or push anything. Never push without the user's yes. Push with
+   `git push -u origin <branch>`, so `@{u}` exists for the next preflight.
 2. **Compose file.** Shipyard needs a Docker Compose file. If the repo has none at its root, or plan returns
    `add_compose_file` or says the file isn't valid, read `references/compose.md` (next to this file) and follow it
    before planning. Never overwrite or replace a compose file the user already has.
@@ -129,4 +130,3 @@ still building, failed, stopped, or serving a different commit.
   anything that looks like a secret, token, key or password out of them.
 - Never print, paste or commit a `bypass_token`. A command that sends it reads it from an environment variable.
 - Ask before you commit, push or install anything, and before every `update_application`.
-- If calls fail with an auth error, ask the user to reconnect Shipyard in their client's MCP settings.
