@@ -61,7 +61,8 @@ Then:
 
 ## 2. Analyze the repo
 
-Work out, and show the user before writing anything:
+Work out the following, then write the file from it. Sum it up next to the file in SKILL.md's one proposal; don't
+stop to confirm it before writing, except to ask which app to deploy in a monorepo:
 
 - **What runs.** Each part that runs on its own: a web frontend, an API, a worker, a scheduled job. Read
   `package.json` (scripts, framework), `requirements.txt` or `pyproject.toml`, `go.mod`, `Gemfile`, `pom.xml` or
@@ -149,13 +150,14 @@ These pass `docker compose up` on a laptop but break on Shipyard. Point each one
 
 ## 6. Commit, push, plan
 
-1. Show the user the full file (and any new Dockerfile or `.dockerignore` change) and wait for a yes.
-2. Ask which branch. Offer a new branch (for example `add-shipyard-compose`) if they don't want it on their main
-   branch yet. Tell them the app stays on that branch: after they merge, offer `update_application` to move it to
-   the main branch, with their yes.
+1. Put the full file (and any new Dockerfile or `.dockerignore` change) in SKILL.md's one proposal, with anything
+   else that needs committing and the push, and wait for one yes. Don't ask about the file, the branch and the push
+   separately.
+2. Use the current branch unless the user asks for a new one (for example `add-shipyard-compose`). On a new branch,
+   tell them the app stays on it: after they merge, offer `update_application` to move it to the main branch, with
+   their yes.
 3. Commit only the files you showed, by name (`git add compose.yml ...`, then `git commit -m "..." -- compose.yml
-   ...`), never `git add -A` or `git add .`. Naming the paths in the commit keeps out anything already staged. Then
-   ask before pushing, and push with `git push -u origin <branch>` so the preflight can find it. Never push
-   without a yes.
+   ...`), never `git add -A` or `git add .`. Naming the paths in the commit keeps out anything already staged. Push
+   with `git push -u origin <branch>` so the preflight can find it. Never push without that yes.
 4. Run the preflight again, then call `plan_application`. For a file kept outside the root, go back to "Keeping the
    file where it is" instead.
