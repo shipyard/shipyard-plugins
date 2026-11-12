@@ -66,7 +66,7 @@ TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token", re.IGNORECAS
 TOKEN_WORD = re.compile(r"token|authorization|bearer", re.IGNORECASE)
 ARG = re.compile(r"^-{0,2}[a-z][a-z0-9-]*$")
 # A skill's pointer to a file it tells the agent to read, like `references/compose.md`.
-SKILL_REF = re.compile(r"references/[A-Za-z0-9_./-]+\.md")
+SKILL_REF = re.compile(r"(?<![\w/:.-])(?:\./)?references/[A-Za-z0-9_./-]+\.md")
 
 errors = []
 
@@ -177,7 +177,9 @@ for skill in skills:
     rel = skill.relative_to(ROOT)
     text = skill.read_text()
     for ref in sorted(set(SKILL_REF.findall(text))):
-        if not (skill.parent / ref).is_file():
+        if ".." in ref.split("/"):
+            errors.append(f"{rel}: names {ref}, which leaves the skill's folder")
+        elif not (skill.parent / ref).is_file():
             errors.append(f"{rel}: names {ref}, which doesn't exist next to it")
     parts = text.split("---", 2)
     if len(parts) < 3 or parts[0].strip():

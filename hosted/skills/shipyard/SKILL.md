@@ -18,8 +18,8 @@ Run these checks the first time in a session, or when a tool fails with an auth 
 2. **No account.** If they don't have a Shipyard account, they can sign up with GitHub from that sign-in page, or first
    at https://shipyard.build/signup. Don't add tracking parameters to that link. Wait until they say they're done.
 3. **Org.** Every call acts on the org they picked when they connected, and no tool changes it. Before adding an app,
-   tell the user which org that is, or ask them. To use another org, they disconnect and connect again, picking that
-   one.
+   tell the user which org that is (a plan's `org` field names it), or ask them if there's no plan yet. To use
+   another org, they disconnect and connect again, picking that one.
 
 Never ask the user to paste a token into the chat or put one in a file: the client keeps it.
 
