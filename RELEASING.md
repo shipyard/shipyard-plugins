@@ -68,9 +68,10 @@ account here, by GitHub handle, not by email or credential.
    review state on the release's Linear issue.
 
    For Kiro, open a PR to [kirodotdev/powers](https://github.com/kirodotdev/powers) that replaces its `shipyard/`
-   folder with this hosted release's `hosted/plugin.json`, `hosted/mcp.json` and `hosted/skills/`, unchanged. Its
-   README entry changes only if the description does. The two copies must stay identical: a fix asked for in Kiro's
-   review lands here first, as a new release, then in the PR. Kiro's team decides when it merges.
+   folder with this hosted release's `hosted/plugin.json`, `hosted/mcp.json` and `hosted/skills/`. Change only `name`
+   in `plugin.json`, from `shipyard-hosted` to `shipyard`, to match the folder: the CLI plugin holds `shipyard` in this
+   marketplace. Its README entry changes only if the description does. Otherwise the two copies stay identical: a fix
+   asked for in Kiro's review lands here first, as a new release, then in the PR. Kiro's team decides when it merges.
 6. Smoke-test from each listing in a clean profile: install, ask "list my Shipyard environments", check that a
    destructive tool asks first, then uninstall.
 
