@@ -79,18 +79,24 @@ first: the plugin's skill tells it to, but your client decides whether it can ru
 stop or restart an environment, rebuild on request, set env vars, read service logs or run commands; use the CLI
 plugin above, or the Shipyard dashboard, for those.
 
+New to Shipyard? Open a repo that's pushed to GitHub and ask your agent to "put this repo on Shipyard". The skill walks
+you through connecting and signing up, and if the repo has no Docker Compose file, it analyzes the repo, writes one
+with you, and checks it with Docker Compose, when Docker is available, before anything is committed or pushed.
+
 | Client | Install |
 |---|---|
 | Claude Code | `claude plugin marketplace add shipyard/shipyard-plugins`, then `claude plugin install shipyard-hosted@shipyard` |
 | Codex | `codex plugin marketplace add shipyard/shipyard-plugins`, then `codex plugin add shipyard-hosted@shipyard` |
+| Kiro | In the Powers panel, choose **Add Custom Power**, then **Import power from GitHub**, and enter `https://github.com/shipyard/shipyard-plugins/tree/main/hosted` |
 
-This plugin is new: signing in through it, in any client, and using it in Cursor or Kiro haven't been tested yet.
+Signing in and reading environments has been tested in Kiro (SHIP-631). Other clients haven't been tested yet.
 
 Install one of the two plugins, not both: each defines a server named `shipyard`.
 
 To disconnect, remove the server or sign out of it in your client's MCP settings. To update the plugin, use
 `claude plugin update shipyard-hosted@shipyard` or `codex plugin marketplace upgrade shipyard`. To remove it, use
-`claude plugin uninstall shipyard-hosted@shipyard` or `codex plugin remove shipyard-hosted@shipyard`.
+`claude plugin uninstall shipyard-hosted@shipyard` or `codex plugin remove shipyard-hosted@shipyard`. In Kiro, update by
+uninstalling the power and importing it from GitHub again, and remove it from the Powers panel.
 
 ## Update and uninstall
 
