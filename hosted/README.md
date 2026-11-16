@@ -78,7 +78,8 @@ one the agent works in. Install this plugin or the CLI plugin, not both: each de
 ## Prerequisites
 
 - A Shipyard account. You can sign up with GitHub on the sign-in page, or at https://shipyard.build/signup.
-- A GitHub repo. The agent offers to push your code if it isn't on GitHub yet, and asks first.
+- A GitHub repo. If yours has no remote yet, the agent offers to create a private one with the GitHub CLI, or points
+  you to github.com/new.
 - Shipyard's GitHub app with access to the repo. If it doesn't have access yet, the agent gives you the link.
 - Optional: Docker, so the agent can check a Compose file it writes, and the GitHub CLI (`gh`), so it can create the
   repo for you.
@@ -98,7 +99,9 @@ one the agent works in. Install this plugin or the CLI plugin, not both: each de
 
 - The agent asks before it commits, pushes, creates a repo or changes an app. Adding an app takes two yeses: one for
   everything before the plan, and one before the app is created.
-- It never commits `.env` files, keys or Terraform state, and never asks you to paste a token.
+- It lists the files it wrote apart from yours, and commits only your files the build needs. It leaves `.env` files,
+  keys and Terraform state out, won't push if they're in commits GitHub doesn't have yet, and never force-pushes or
+  asks you to paste a token.
 - Your client decides whether a tool can run without asking. Keep approval on for `create_application` and
   `update_application`.
 
