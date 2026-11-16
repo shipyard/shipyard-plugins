@@ -16,7 +16,16 @@
   .claude-plugin/plugin.json, and the marketplace lists each plugin from its
   own folder.
 - Every skills/*/SKILL.md has YAML frontmatter with a name matching its folder
-  and a description, and every `references/....md` file it names exists next to it.
+  and a description, and every `references/....md` or `scripts/....sh` file it
+  names exists next to it.
+- Every quoted section name a skill or its references point the agent at
+  (`see "Connecting"`) is a heading in that skill or its references.
+- The hosted skill keeps the safety rules listed in SAFETY_RULES (no `git add
+  -A`, no force-push, no proposed secrets, the secret screen), in SKILL.md and
+  references/compose.md. A listed file that no longer exists is an error too.
+
+The hosted skill's git script (scripts/shipyard-git.sh) and its secret pattern
+are tested separately, against fixture repos, by test_shipyard_git.py.
 
 Exits 1 with one line per problem.
 """
@@ -65,8 +74,32 @@ TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token", re.IGNORECAS
 # Words that are fine in prose, so they're checked only in keys and server definitions.
 TOKEN_WORD = re.compile(r"token|authorization|bearer", re.IGNORECASE)
 ARG = re.compile(r"^-{0,2}[a-z][a-z0-9-]*$")
-# A skill's pointer to a file it tells the agent to read, like `references/compose.md`.
-SKILL_REF = re.compile(r"(?<![\w/:.-])(?:\./)?references/[A-Za-z0-9_./-]+\.md")
+# A skill's pointer to a file it tells the agent to read or run, like
+# `references/compose.md` or `scripts/shipyard-git.sh`.
+SKILL_REF = re.compile(r"(?<![\w/:.-])(?:\./)?(?:references/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.sh)")
+# A skill's pointer to one of its own sections, like `see "Connecting"`.
+SECTION_REF = re.compile(r'\b(?:see|from|go to|go back to|as in) "([^"]+)"', re.IGNORECASE)
+# Rules that keep the hosted skill's one-yes commit and push safe, per file in
+# a skill's folder. Matched after collapsing whitespace, so rewrapping a line
+# doesn't trip them. A key that names no checked file is itself an error.
+SAFETY_RULES = {
+    "hosted/skills/shipyard/SKILL.md": [
+        "never `git add -A` or `git add .`",
+        "Never force-push",
+        "Never propose a secret",
+        "Never ask the user to paste a token",
+        "`*.tfstate*`",
+        "shipyard-git.sh screen <list file>",
+        "SCREEN_FAILED",
+        "never paste file paths into a shell command",
+        "never put a commit message in one either",
+    ],
+    "hosted/skills/shipyard/references/compose.md": [
+        "replace each with `${NAME}`",
+        "exactly as SKILL.md's one proposal says",
+    ],
+}
+safety_seen = set()
 
 errors = []
 
@@ -181,6 +214,25 @@ for skill in skills:
             errors.append(f"{rel}: names {ref}, which leaves the skill's folder")
         elif not (skill.parent / ref).is_file():
             errors.append(f"{rel}: names {ref}, which doesn't exist next to it")
+    # Section names the skill points the agent at ('see "Connecting"') must be
+    # headings in the skill or its references, or a rename strands the agent.
+    docs_in_skill = [skill, *sorted((skill.parent / "references").glob("*.md"))]
+    headings = {
+        h.strip()
+        for doc in docs_in_skill
+        for h in re.findall(r"^#{2,4} (.+)$", doc.read_text(), re.M)
+    }
+    for doc in docs_in_skill:
+        doc_rel = str(doc.relative_to(ROOT))
+        flat = re.sub(r"\s+", " ", doc.read_text())
+        for name in sorted(set(SECTION_REF.findall(flat))):
+            if name not in headings:
+                errors.append(f"{doc_rel}: points to section {name!r}, which has no heading")
+        if doc_rel in SAFETY_RULES:
+            safety_seen.add(doc_rel)
+            for phrase in SAFETY_RULES[doc_rel]:
+                if phrase not in flat:
+                    errors.append(f"{doc_rel}: safety rule {phrase!r} is missing; keep it, or update SAFETY_RULES on purpose")
     parts = text.split("---", 2)
     if len(parts) < 3 or parts[0].strip():
         errors.append(f"{rel}: must start with YAML frontmatter between --- lines")
@@ -197,6 +249,9 @@ for skill in skills:
         errors.append(f"{rel}: name {meta.get('name')!r} must match its folder {skill.parent.name!r}")
     if not isinstance(meta.get("description"), str) or not meta["description"].strip():
         errors.append(f"{rel}: description is required")
+
+for name in sorted(set(SAFETY_RULES) - safety_seen):
+    errors.append(f"SAFETY_RULES names {name}, which is not a checked skill file; update it if the skill moved")
 
 for e in errors:
     print(f"::error::{e}")

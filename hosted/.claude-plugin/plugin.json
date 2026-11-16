@@ -1,6 +1,6 @@
 {
   "name": "shipyard-hosted",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Put your repo on Shipyard and check its preview environments from Claude, with nothing to install: sign in with Shipyard, pick an organization, and the agent writes a Docker Compose file if your repo has none.",
   "author": { "name": "Shipyard", "url": "https://shipyard.build", "email": "support@shipyard.build" },
   "homepage": "https://shipyard.build",
