@@ -4,7 +4,11 @@ Each case builds throwaway git repos (synthetic values only; secret-shaped
 strings are split so the repo's own secret scanner doesn't read them), runs one
 subcommand the way the hosted skill tells the agent to, and checks its tagged
 output and exit code. No output may contain the word "synthetic", which every
-planted secret value carries. Exits 1 with one line per failure.
+planted secret value carries.
+
+Pushes go to `ssh://git@github.com/<name>.git` through a fake ssh that serves
+local bare repos, so the script's GitHub-only guard runs unchanged. Exits 1
+with one line per failure; pytest runs it as one test.
 """
 
 import os
@@ -18,8 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "hosted/skills/shipyard/scripts/shipyard-git.sh"
 SECRET = 'TOKEN = "synthetic' + '12345abc"\n'
-ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
-       "SHIPYARD_GIT_ALLOW_ANY_REMOTE": "1"}
 failures = []
 
 # Lines the secret pattern must flag, one or more per branch, and ordinary code
@@ -59,6 +61,17 @@ PATTERN_MISSES = [
     "passwordField = document.getElementById('pw')",
 ]
 
+FAKE_SSH = """#!/bin/sh
+# Serve ssh://git@github.com/<name>.git from $FIXTURE_ROOT/<name>.git, locally.
+for a; do last=$a; done
+case "$last" in
+  git-upload-pack*|git-receive-pack*) ;;
+  *) exit 0 ;;
+esac
+cmd=${last%% *}; path=${last#* }; path=${path#\\'}; path=${path%\\'}
+exec "$cmd" "$FIXTURE_ROOT$path"
+"""
+
 
 def sh(cwd, *args, check=True, env=None):
     r = subprocess.run(args, cwd=cwd, text=True, capture_output=True, env=env or ENV)
@@ -67,8 +80,12 @@ def sh(cwd, *args, check=True, env=None):
     return r
 
 
-def tool(cwd, *args, env=None):
-    return sh(cwd, "bash", str(SCRIPT), *args, check=False, env=env)
+def tool(cwd, *args, env=None, timeout=120):
+    try:
+        return subprocess.run(["bash", str(SCRIPT), *args], cwd=cwd, text=True, capture_output=True,
+                              env=env or ENV, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 124, "TIMED_OUT", "")
 
 
 def repo(path, identity=True):
@@ -91,17 +108,30 @@ def commit_all(cwd, msg):
     sh(cwd, "git", "commit", "-qm", msg)
 
 
-def lst(tmp, name, *paths):
+def lst(name, *paths):
     """A path-list file, as the agent writes it with its file tool."""
-    p = tmp / f"{name}.paths"
+    p = LISTS / f"{name}.paths"
     p.write_text("".join(x + "\n" for x in paths))
     return str(p)
 
 
-def msg(tmp, name, text):
-    p = tmp / f"{name}.msg"
+def msg(name, text):
+    p = LISTS / f"{name}.msg"
     p.write_text(text)
     return str(p)
+
+
+def gh_remote(t, cwd, name, hook=None, add=True):
+    """A bare repo served as ssh://git@github.com/<name>.git."""
+    sh(t, "git", "init", "-q", "--bare", "-b", "main", str(FIXTURES / f"{name}.git"))
+    if hook:
+        h = FIXTURES / f"{name}.git" / "hooks" / "pre-receive"
+        h.write_text(hook)
+        h.chmod(0o755)
+    url = f"ssh://git@github.com/{name}.git"
+    if add:
+        sh(cwd, "git", "remote", "add", "origin", url)
+    return url
 
 
 def expect(name, r, code, present=(), absent=()):
@@ -115,15 +145,6 @@ def expect(name, r, code, present=(), absent=()):
         problems.append("printed a secret value")
     if problems:
         failures.append(f"{name}: {'; '.join(problems)}\n  stdout: {out.strip()[:500]}\n  stderr: {r.stderr.strip()[:200]}")
-
-
-def bare(t, name, hook=None):
-    sh(t, "git", "init", "-q", "--bare", "-b", "main", name)
-    if hook:
-        h = t / name / "hooks" / "pre-receive"
-        h.write_text(hook)
-        h.chmod(0o755)
-    return f"../{name}"
 
 
 def pattern_cases():
@@ -140,15 +161,32 @@ def pattern_cases():
             failures.append(f"pattern {'misses' if want else 'flags'} case {line[:14]!r}...")
 
 
+def checkout_rules():
+    """Windows checkouts must keep LF in the script, or bash can't parse it."""
+    if b"\r" in SCRIPT.read_bytes():
+        failures.append("shipyard-git.sh contains a carriage return")
+    attrs = ROOT / ".gitattributes"
+    if not attrs.is_file() or not re.search(r"^\*\.sh\s+.*eol=lf", attrs.read_text(), re.M):
+        failures.append(".gitattributes must set `*.sh text eol=lf`")
+    if "SHIPYARD_GIT_ALLOW_ANY_REMOTE" in SCRIPT.read_text():
+        failures.append("the script still has a test-only bypass of its GitHub check")
+
+
 def main():
     if not SCRIPT.is_file():
         print(f"::error::{SCRIPT.relative_to(ROOT)} is missing")
         return 1
     pattern_cases()
+    checkout_rules()
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
-        L = t / "lists"
-        L.mkdir()
+        global LISTS, FIXTURES, ENV
+        LISTS = t / "lists"; LISTS.mkdir()
+        FIXTURES = t / "github"; FIXTURES.mkdir()
+        fake = t / "fake-ssh"; fake.write_text(FAKE_SSH); fake.chmod(0o755)
+        ENV = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "SSH_ASKPASS"))}
+        ENV.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_SSH_COMMAND": str(fake),
+                    "GIT_SSH_VARIANT": "ssh", "FIXTURE_ROOT": str(FIXTURES)})
 
         # Paths with shell and glob characters are screened, and only they are committed.
         r1 = repo(t / "brackets")
@@ -157,61 +195,89 @@ def main():
         write(r1 / "pages/i.tsx", "export default 2\n")
         write(r1 / "PATHS", "x\n")
         expect("screen flags content in a [bracket] path",
-               tool(r1, "screen", lst(L, "b1", "pages/[id].tsx", "app/(auth)/page.tsx", "PATHS")),
+               tool(r1, "screen", lst("b1", "pages/[id].tsx", "app/(auth)/page.tsx", "PATHS")),
                1, ["CONTENT_HIT pages/[id].tsx", "SCREEN_HITS"], ["CONTENT_HIT app/(auth)/page.tsx", "SCREEN_CLEAN"])
+        write(r1 / "staged.txt", "x\n")
+        sh(r1, "git", "add", "staged.txt")
+        expect("commit refuses a content hit the user hasn't confirmed",
+               tool(r1, "commit", lst("b2", "pages/[id].tsx", "app/(auth)/page.tsx"), msg("b2", "add pages\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+        ok = LISTS / "ok.txt"; ok.write_text("CONTENT_HIT pages/[id].tsx\n")
         expect("commit takes paths literally",
-               tool(r1, "commit", lst(L, "b2", "pages/[id].tsx", "app/(auth)/page.tsx"), msg(L, "b2", "add pages\n")),
+               tool(r1, "commit", lst("b2", "pages/[id].tsx", "app/(auth)/page.tsx"), msg("b2", "add pages\n"), str(ok)),
                0, ["COMMITTED"])
         left = sh(r1, "git", "status", "--porcelain", "--untracked-files=all").stdout
         if "?? pages/i.tsx" not in left:
             failures.append(f"commit staged pages/i.tsx, which matches the glob pages/[id].tsx: {left!r}")
+        head_files = sh(r1, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        if "staged.txt" in head_files:
+            failures.append("commit included staged.txt, which was staged before but not listed")
 
-        # The message is taken literally: nothing in it is expanded by a shell.
+        # The message is taken literally, and a secret-looking message is refused.
         write(r1 / "m.txt", "m\n")
         env = {**ENV, "DB_PASSWORD": "synthetic" + "99"}
         expect("commit message is not shell-expanded",
-               tool(r1, "commit", lst(L, "m", "m.txt"), msg(L, "m", "use ${DB_PASSWORD} and `id` from Shipyard\n"), env=env),
+               tool(r1, "commit", lst("m", "m.txt"), msg("m", "use ${DB_PASSWORD} and `id` from Shipyard\n"), env=env),
                0, ["COMMITTED"])
         subject = sh(r1, "git", "log", "-1", "--format=%s").stdout.strip()
         if subject != "use ${DB_PASSWORD} and `id` from Shipyard":
             failures.append(f"commit message was changed on the way in: {subject[:60]!r}")
-
-        # An empty list never commits whatever happens to be staged; a folder or a
-        # never-commit name is refused by commit itself.
-        write(r1 / "staged.txt", "x\n")
-        sh(r1, "git", "add", "staged.txt")
-        expect("commit refuses an empty list", tool(r1, "commit", lst(L, "e"), msg(L, "e", "x\n")), 2, ["SCREEN_FAILED"], ["COMMITTED"])
-        write(r1 / "src/.env.production", "A=1\n")
-        expect("commit refuses a folder", tool(r1, "commit", lst(L, "f", "src"), msg(L, "f", "x\n")), 2, ["SCREEN_FAILED"], ["COMMITTED"])
-        expect("commit refuses a never-commit name", tool(r1, "commit", lst(L, "n", "src/.env.production"), msg(L, "n", "x\n")),
+        write(r1 / "m2.txt", "m\n")
+        expect("commit refuses a secret-looking message",
+               tool(r1, "commit", lst("m2", "m2.txt"), msg("m2", "fix\n\nAPI_KEY=synthetic" + "12345abc\n")),
                2, ["SCREEN_FAILED"], ["COMMITTED"])
 
-        # A failing commit leaves the user's index as it was.
+        # An empty list, a folder, a never-commit name or a dependency folder is refused by commit itself.
+        expect("commit refuses an empty list", tool(r1, "commit", lst("e"), msg("e", "x\n")), 2, ["SCREEN_FAILED"], ["COMMITTED"])
+        write(r1 / "src/.env.production", "A=1\n")
+        expect("commit refuses a folder", tool(r1, "commit", lst("f", "src"), msg("f", "x\n")), 2, ["SCREEN_FAILED"], ["COMMITTED"])
+        expect("commit refuses a never-commit name", tool(r1, "commit", lst("n", "src/.env.production"), msg("n", "x\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+        write(r1 / "venv/lib.py", "x\n")
+        expect("commit refuses a dependency folder file", tool(r1, "commit", lst("v", "venv/lib.py"), msg("v", "x\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+
+        # A failing hook leaves the index as it was, and its output isn't printed.
         before = sh(r1, "git", "diff", "--cached", "--name-only").stdout
         hook = r1 / ".git/hooks/pre-commit"
-        hook.write_text("#!/bin/sh\necho 'error: lint failed' >&2\nexit 1\n")
+        hook.write_text("#!/bin/sh\necho 'error: lint failed near API_KEY=synthetic" + "12345abc'\n"
+                        "echo 'error: lint failed near API_KEY=synthetic" + "12345abc' >&2\nexit 1\n")
         hook.chmod(0o755)
         write(r1 / "h.txt", "h\n")
-        expect("commit reports a failing hook", tool(r1, "commit", lst(L, "h", "h.txt"), msg(L, "h", "x\n")),
-               2, ["SCREEN_FAILED", "lint failed"], ["COMMITTED"])
+        expect("commit reports a failing hook without its secret", tool(r1, "commit", lst("h", "h.txt"), msg("h", "x\n")),
+               2, ["SCREEN_FAILED", "hidden"], ["COMMITTED"])
         after = sh(r1, "git", "diff", "--cached", "--name-only").stdout
         if before != after:
             failures.append(f"a failed commit changed the index: {before!r} -> {after!r}")
+        # A hook that stages extra files gets the commit undone.
+        hook.write_text("#!/bin/sh\ngit add -A\n")
+        old_head = sh(r1, "git", "rev-parse", "HEAD").stdout.strip()
+        write(r1 / "extra.txt", "x\n")
+        expect("commit undoes a hook that adds unlisted files", tool(r1, "commit", lst("hx", "h.txt"), msg("hx", "x\n")),
+               2, ["SCREEN_FAILED", "extra.txt"], ["COMMITTED"])
+        if sh(r1, "git", "rev-parse", "HEAD").stdout.strip() != old_head:
+            failures.append("a hook's extra files stayed committed")
+        # A hook that writes a secret into a listed file gets the commit undone.
+        hook.write_text("#!/bin/sh\nprintf '%s\\n' 'TOKEN = \"synthetic" + "12345abc\"' >> h.txt\ngit add h.txt\n")
+        expect("commit undoes a hook that writes a secret", tool(r1, "commit", lst("hy", "h.txt"), msg("hy", "x\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+        if sh(r1, "git", "rev-parse", "HEAD").stdout.strip() != old_head:
+            failures.append("a hook's secret stayed committed")
         hook.unlink()
 
         # No identity, and a merge in progress, stop before anything changes.
         r0 = repo(t / "noident", identity=False)
         write(r0 / "a.txt", "a\n")
-        expect("commit needs an identity", tool(r0, "commit", lst(L, "i", "a.txt"), msg(L, "i", "x\n")), 2, ["NO_IDENTITY"])
+        expect("commit needs an identity", tool(r0, "commit", lst("i", "a.txt"), msg("i", "x\n")), 2, ["NO_IDENTITY"])
         rm = repo(t / "merging")
         write(rm / "c.txt", "base\n"); commit_all(rm, "base")
         sh(rm, "git", "switch", "-qc", "side"); write(rm / "c.txt", "side\n"); commit_all(rm, "side")
         sh(rm, "git", "switch", "-q", "main"); write(rm / "c.txt", "main\n"); commit_all(rm, "main")
         sh(rm, "git", "merge", "-q", "side", check=False)
-        expect("commit refuses during a merge", tool(rm, "commit", lst(L, "mg", "c.txt"), msg(L, "mg", "x\n")), 2, ["IN_PROGRESS"])
+        expect("commit refuses during a merge", tool(rm, "commit", lst("mg", "c.txt"), msg("mg", "x\n")), 2, ["IN_PROGRESS a merge"])
         expect("inventory shows unmerged files", tool(rm, "inventory"), 0, ["UNMERGED c.txt"])
 
-        # Never-commit names (any case), deletions, binary files and folders.
+        # Never-commit names (any case), deletions, binaries, symlinks, size.
         r2 = repo(t / "names")
         write(r2 / "keep.txt", "x\n")
         write(r2 / "old/compose.yml", "services: {}\n")
@@ -220,13 +286,19 @@ def main():
         for name in (".env", ".ENV", "CERT.PFX", "prod.env", "config/.env.local", ".env.example", "app.keystore"):
             write(r2 / name, "A=1\n")
         write(r2 / "blob.bin", "\x00" + SECRET)
-        expect("screen flags never-commit names in any case, skips deletions, reports binaries",
-               tool(r2, "screen", lst(L, "n2", ".env", ".ENV", "CERT.PFX", "prod.env", "config/.env.local", ".env.example",
-                                      "app.keystore", "old/compose.yml", "blob.bin")),
-               1, ["NAME_HIT .env\n", "NAME_HIT .ENV", "NAME_HIT CERT.PFX", "NAME_HIT prod.env", "NAME_HIT config/.env.local",
-                   "NAME_HIT app.keystore", "DELETED old/compose.yml", "BINARY_NOT_SCANNED blob.bin"],
-               ["NAME_HIT .env.example", "SCREEN_FAILED"])
-        expect("screen rejects a folder", tool(r2, "screen", lst(L, "d", "config")), 2, ["SCREEN_FAILED"])
+        os.symlink("/dev/zero", r2 / "zero")
+        os.symlink("missing-target", r2 / "dangling")
+        with open(r2 / "huge.bin", "wb") as f:
+            f.seek(51 * 1024 * 1024)
+            f.write(b"x")
+        r = tool(r2, "screen", lst("n2", ".env", ".ENV", "CERT.PFX", "prod.env", "config/.env.local", ".env.example",
+                                   "app.keystore", "old/compose.yml", "blob.bin", "zero", "dangling", "huge.bin"), timeout=30)
+        expect("screen: never-commit names in any case, deletions, binaries, symlinks, size", r, 1,
+               ["NAME_HIT .env\n", "NAME_HIT .ENV", "NAME_HIT CERT.PFX", "NAME_HIT prod.env", "NAME_HIT config/.env.local",
+                "NAME_HIT app.keystore", "DELETED old/compose.yml", "BINARY_NOT_SCANNED blob.bin", "TOO_BIG huge.bin"],
+               ["NAME_HIT .env.example", "SCREEN_FAILED", "TIMED_OUT", "zero"])
+        (r2 / "huge.bin").unlink()
+        expect("screen rejects a folder", tool(r2, "screen", lst("d", "config")), 2, ["SCREEN_FAILED"])
         r = tool(r2, "inventory")
         # (.ENV and .env are one file on a case-insensitive filesystem, so only .env is listed there.)
         expect("inventory tags", r, 0, ["NEVER CERT.PFX", "NEVER prod.env", "DELETED old/compose.yml", "FILE blob.bin"],
@@ -239,62 +311,110 @@ def main():
         write(rn / "ok.js\nFILE fake.js", "x\n")
         expect("inventory flags a name with a newline", tool(rn, "inventory"), 0, ["BAD_NAME"], ["\nFILE fake.js"])
 
-        # History: merge-only secrets, other remotes, push URLs, stale tracking refs.
+        # History: merges, other remotes, push URLs, stale refs, attributes, replace refs, odd names, messages.
         r3 = repo(t / "merge")
         write(r3 / "c.txt", "base\n"); commit_all(r3, "base")
         sh(r3, "git", "switch", "-qc", "side"); write(r3 / "c.txt", "side\n"); commit_all(r3, "side")
         sh(r3, "git", "switch", "-q", "main"); write(r3 / "c.txt", "main\n"); commit_all(r3, "main")
         sh(r3, "git", "merge", "-q", "side", check=False)
         write(r3 / "c.txt", SECRET); commit_all(r3, "merge")
-        expect("screen sees a secret added only in a merge", tool(r3, "screen", "--new-repo", lst(L, "e3")), 1, ["HISTORY_CONTENT_HIT", "c.txt"])
+        expect("screen sees a secret added only in a merge", tool(r3, "screen", "--new-repo", lst("e3")), 1, ["HISTORY_CONTENT_HIT", "c.txt"])
 
         r4 = repo(t / "other")
         write(r4 / "s.py", SECRET); commit_all(r4, "a")
-        sh(r4, "git", "remote", "add", "gitlab", bare(t, "other.git"))
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "other.git")
+        sh(r4, "git", "remote", "add", "gitlab", "../other.git")
         sh(r4, "git", "push", "-q", "gitlab", "main")
         expect("history already on another remote is still screened for a new repo",
-               tool(r4, "screen", "--new-repo", lst(L, "e4")), 1, ["HISTORY_CONTENT_HIT", "s.py", "RANGE whole history"])
+               tool(r4, "screen", "--new-repo", lst("e4")), 1, ["HISTORY_CONTENT_HIT", "s.py", "RANGE whole history"])
 
         r5 = repo(t / "pushurl")
         write(r5 / "s.py", SECRET); commit_all(r5, "a")
-        sh(r5, "git", "remote", "add", "origin", bare(t, "fetch.git"))
+        gh_remote(t, r5, "pushurl")
         sh(r5, "git", "push", "-q", "origin", "main")
-        expect("commits the destination already has are skipped", tool(r5, "screen", lst(L, "e5")), 0, ["SCREEN_CLEAN"], ["HISTORY_CONTENT_HIT"])
+        expect("commits the destination already has are skipped", tool(r5, "screen", lst("e5")), 0, ["SCREEN_CLEAN"], ["HISTORY_CONTENT_HIT"])
         write(r5 / "t.py", SECRET); commit_all(r5, "b")
-        sh(r5, "git", "remote", "add", "backup", bare(t, "backup.git"))
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "backup.git")
+        sh(r5, "git", "remote", "add", "backup", "../backup.git")
         sh(r5, "git", "push", "-q", "backup", "main")
-        expect("commits on another remote but not the destination are screened", tool(r5, "screen", lst(L, "e5b")), 1,
+        expect("commits on another remote but not the destination are screened", tool(r5, "screen", lst("e5b")), 1,
                ["HISTORY_CONTENT_HIT", "t.py"])
-        sh(r5, "git", "remote", "set-url", "--push", "origin", bare(t, "push.git"))
-        expect("a different push URL is what counts", tool(r5, "screen", lst(L, "e5c")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
+        sh(r5, "git", "remote", "set-url", "--push", "origin", gh_remote(t, r5, "pushurl2", add=False))
+        expect("a different push URL is what counts", tool(r5, "screen", lst("e5c")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
+        sh(r5, "git", "remote", "set-url", "--add", "--push", "origin", gh_remote(t, r5, "pushurl3", add=False))
+        expect("two push URLs screen the whole history", tool(r5, "screen", lst("e5d")), 1, ["more than one URL"])
+        expect("push refuses two push URLs", tool(r5, "push", "main"), 2, ["SCREEN_FAILED"], ["PUSHED"])
 
         rs = repo(t / "stale")
         write(rs / "s.py", SECRET); commit_all(rs, "a")
-        sh(rs, "git", "remote", "add", "origin", bare(t, "old.git"))
+        gh_remote(t, rs, "old")
         sh(rs, "git", "push", "-q", "origin", "main")
-        sh(rs, "git", "remote", "set-url", "origin", bare(t, "new.git"))
-        sh(rs, "git", "fetch", "-q", "origin", check=False)
-        expect("a stale origin/* ref doesn't hide commits", tool(rs, "screen", lst(L, "es")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
+        sh(rs, "git", "remote", "set-url", "origin", gh_remote(t, rs, "new", add=False))
+        expect("a stale origin/* ref doesn't hide commits", tool(rs, "screen", lst("es")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
 
-        # Unpushed commits are listed for the proposal; secret-looking subjects are hidden.
+        rh = repo(t / "hidden")
+        write(rh / ".gitattributes", "config.txt -diff\n")
+        write(rh / "config.txt", SECRET)
+        write(rh / "commit notes.txt", SECRET)
+        write(rh / "my dir/.env", "A=1\n"); write(rh / "my dir/id_rsa", "x\n")
+        commit_all(rh, "a")
+        r = tool(rh, "screen", "--new-repo", lst("eh"))
+        expect("history: -diff attributes, 'commit ' names and spaced dirs don't hide hits", r, 1,
+               ["config.txt", "commit notes.txt", "my dir/.env", "my dir/id_rsa"])
+
+        rr = repo(t / "replaced")
+        write(rr / "s.py", SECRET); commit_all(rr, "a")
+        bad = sh(rr, "git", "rev-parse", "HEAD").stdout.strip()
+        sh(rr, "git", "rm", "-q", "s.py"); write(rr / "ok.txt", "ok\n"); commit_all(rr, "clean")
+        clean = sh(rr, "git", "rev-parse", "HEAD").stdout.strip()
+        sh(rr, "git", "reset", "-q", "--hard", bad)
+        sh(rr, "git", "replace", bad, clean)
+        expect("replace refs don't hide a commit", tool(rr, "screen", "--new-repo", lst("er")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
+
         r6 = repo(t / "unpushed")
         write(r6 / ".env", "A=1\n"); commit_all(r6, "add env")
         (r6 / ".env").unlink(); commit_all(r6, "drop env")
         write(r6 / "café/.env", "A=1\n"); commit_all(r6, "API_KEY=synthetic" + "12345abc")
-        r = tool(r6, "screen", "--new-repo", lst(L, "e6"))
-        expect("unpushed commits, deleted and non-ASCII never-commit names", r, 1,
-               ["COMMIT ", "COMMITS_TOTAL 3", "HISTORY_NAME_HIT", " .env\n", "café/.env", "subject hidden"])
+        write(r6 / "b.txt", "b\n"); sh(r6, "git", "add", "b.txt")
+        sh(r6, "git", "commit", "-q", "-m", "body", "-m", "password = \"synthetic" + "12345abc\"")
+        r = tool(r6, "screen", "--new-repo", lst("e6"))
+        expect("unpushed commits, deleted and non-ASCII names, secret-looking messages", r, 1,
+               ["COMMIT ", "COMMITS_TOTAL 4", "HISTORY_NAME_HIT", " .env\n", "café/.env", "subject hidden", "HISTORY_MESSAGE_HIT"])
+        if r.stdout.count("COMMITS_TOTAL") != 1:
+            failures.append("COMMITS_TOTAL printed more than once")
 
-        # Destination: credentials in URLs are never printed; non-GitHub is named.
+        # Caps and the no-repo / no-commits cases.
+        rc = repo(t / "cap")
+        for i in range(205):
+            write(rc / f"f{i:03}.txt", "x\n")
+        r = tool(rc, "inventory")
+        m = re.search(r"INVENTORY_TOTAL 205 \(all of them: ([^)]+)\)", r.stdout)
+        if not m or not Path(m.group(1)).is_file() or r.stdout.count("\nFILE ") > 200:
+            failures.append(f"inventory over the cap doesn't name a saved full list: {r.stdout[-200:]!r}")
+        expect("no commits yet", tool(rc, "screen", lst("nc")), 0, ["NO_COMMITS", "SCREEN_CLEAN"])
+        plain = t / "plain-noscreen"; plain.mkdir()
+        expect("not a repo yet", tool(plain, "screen", lst("nr")), 0, ["NO_REPO", "SCREEN_CLEAN"])
+
+        # Destination and remotes: credentials never printed; only real GitHub hosts pass.
         rd = repo(t / "dest")
         sh(rd, "git", "remote", "add", "origin", "https://user:synthetic" + "99@github.com/o/r.git")
-        expect("destination hides URL credentials", tool(rd, "destination", env={**ENV, "SHIPYARD_GIT_ALLOW_ANY_REMOTE": ""}), 0,
-               ["PUSH_TO https://***@github.com/o/r.git"])
-        sh(rd, "git", "remote", "set-url", "origin", "git@gitlab.com:o/r.git")
-        expect("destination names a non-GitHub remote", tool(rd, "destination", env={**ENV, "SHIPYARD_GIT_ALLOW_ANY_REMOTE": ""}), 0,
-               ["NOT_GITHUB"])
+        sh(rd, "git", "remote", "add", "work", "git@gitlab.com:o/r.git")
+        expect("destination hides URL credentials", tool(rd, "destination"), 0, ["PUSH_TO https://***@github.com/o/r.git"])
+        expect("remotes hides credentials for every remote", tool(rd, "remotes"), 0,
+               ["REMOTE origin GITHUB https://***@github.com/o/r.git", "REMOTE work OTHER git@gitlab.com:o/r.git"])
+        for bad_url in ("https://github.com:443@example.invalid/o/r.git", "https://github.com.example.invalid/o/r.git",
+                        "../local.git", "git@example.invalid:github.com/o/r.git"):
+            sh(rd, "git", "remote", "set-url", "origin", bad_url)
+            expect(f"destination rejects {bad_url}", tool(rd, "destination"), 0, ["NOT_GITHUB"], ["PUSH_TO"])
+        for good_url in ("git@github.com:o/r.git", "ssh://git@ssh.github.com:443/o/r.git", "https://GitHub.com/o/r.git"):
+            sh(rd, "git", "remote", "set-url", "origin", good_url)
+            expect(f"destination accepts {good_url}", tool(rd, "destination"), 0, ["PUSH_TO"], ["NOT_GITHUB"])
+        sh(rd, "git", "config", "remote.origin.pushurl", "--upload-pack=touch PWNED")
+        tool(rd, "screen", lst("inj"))
+        if (rd / "PWNED").exists():
+            failures.append("a push URL starting with --upload-pack= ran a command")
 
-        # Inventory works before git init, honors .gitignore, collapses dependency folders, and is quick.
+        # Inventory before git init, .gitignore, dependency folders once each, and fast.
         r7 = t / "plain"
         write(r7 / "src/app.py", "x\n")
         write(r7 / "build/Dockerfile", "FROM scratch\n")
@@ -302,42 +422,89 @@ def main():
         write(r7 / "ignored.txt", "x\n")
         for i in range(4000):
             write(r7 / f"node_modules/pkg{i}/index.js", "x\n")
+        for i in range(50):
+            write(r7 / f"node_modules/pkg{i}/node_modules/dep/index.js", "x\n")
+            write(r7 / f".venv/lib/p{i}/__pycache__/m.pyc", "x")
         start = time.monotonic()
         r = tool(r7, "inventory")
         took = time.monotonic() - start
         expect("inventory in a folder that isn't a repo", r, 0,
-               ["NOT_A_REPO", "FILE src/app.py", "FILE build/Dockerfile", "FOLDER node_modules/ 4000 files"],
-               ["ignored.txt", "node_modules/pkg0"])
+               ["NOT_A_REPO", "FILE src/app.py", "FILE build/Dockerfile", "FOLDER node_modules/ 4050 files", "FOLDER .venv/ 50 files"],
+               ["ignored.txt", "node_modules/pkg0", "__pycache__"])
         # gstack-timing-ok: a generous bound that only a per-file subprocess loop (about 40s here) can exceed.
         if took > 20:
-            failures.append(f"inventory took {took:.0f}s for 4000 dependency files")
+            failures.append(f"inventory took {took:.0f}s for 4,100 dependency files")
         if (r7 / ".git").exists():
             failures.append("inventory created .git in a folder that wasn't a repo")
+        many = [f"src/m{i}.py" for i in range(3000)]
+        for p in many:
+            write(r7 / p, "x = 1\n")
+        sh(r7, "git", "init", "-q")
+        start = time.monotonic()
+        r = tool(r7, "screen", lst("many", *many))
+        took = time.monotonic() - start
+        expect("screen of 3,000 files", r, 0, ["FILES_CHECKED 3000", "SCREEN_CLEAN"])
+        # gstack-timing-ok: a generous bound that only a per-file subprocess loop (about 30s here) can exceed.
+        if took > 15:
+            failures.append(f"screen took {took:.0f}s for 3,000 files")
         nested = r1 / "sub"
         nested.mkdir()
         expect("inventory refuses a folder inside another repo", tool(nested, "inventory"), 2, ["PARENT_REPO"])
-        expect("screen refuses a folder inside another repo", tool(nested, "screen", lst(L, "ns")), 2, ["PARENT_REPO"])
+        expect("screen refuses a folder inside another repo", tool(nested, "screen", lst("ns")), 2, ["PARENT_REPO"])
 
-        # Network subcommands against local bare remotes.
+        # Network subcommands against fake-GitHub bare repos.
         r8 = repo(t / "net")
         expect("fetch without origin", tool(r8, "fetch"), 2, ["NO_ORIGIN"])
-        sh(r8, "git", "remote", "add", "origin", bare(t, "empty.git"))
+        gh_remote(t, r8, "netrepo")
         expect("an empty origin reads as empty", tool(r8, "default-branch"), 0, ["EMPTY_REMOTE"])
         sh(r8, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        sh(r8, "git", "tag", "-a", "v9", "-m", "release")
+        sh(r8, "git", "config", "push.followTags", "true")
         expect("push the current branch", tool(r8, "push", "main"), 0, ["PUSHED main"])
+        tags = sh(FIXTURES / "netrepo.git", "git", "tag").stdout
+        if "v9" in tags:
+            failures.append("push sent a tag the user didn't approve (push.followTags)")
         expect("default branch after the first push", tool(r8, "default-branch"), 0, ["DEFAULT main"])
         expect("push refuses a branch HEAD isn't on", tool(r8, "push", "other"), 2, ["SCREEN_FAILED"])
-        sh(t, "git", "clone", "-q", "empty.git", "clone2")
+        sh(t, "git", "clone", "-q", str(FIXTURES / "netrepo.git"), "clone2")
         c2 = t / "clone2"
         sh(c2, "git", "config", "user.email", "t@example.invalid"); sh(c2, "git", "config", "user.name", "t")
         sh(c2, "git", "commit", "-q", "--allow-empty", "-m", "2"); sh(c2, "git", "push", "-q", "origin", "main")
         sh(r8, "git", "commit", "-q", "--allow-empty", "-m", "3")
         expect("a non-fast-forward push is rejected", tool(r8, "push", "main"), 2, ["PUSH_REJECTED"])
+
         r9 = repo(t / "blocked")
-        sh(r9, "git", "remote", "add", "origin",
-           bare(t, "blocked.git", "#!/bin/sh\necho 'GH013: Repository rule violations found. Push cannot contain secrets' >&2\nexit 1\n"))
+        gh_remote(t, r9, "blocked", "#!/bin/sh\necho 'GH013: Repository rule violations found. Push cannot contain secrets' >&2\nexit 1\n")
         sh(r9, "git", "commit", "-q", "--allow-empty", "-m", "1")
-        expect("a push blocked for a secret says so", tool(r9, "push", "main"), 2, ["PUSH_BLOCKED"], ["PUSH_REJECTED"])
+        expect("a push blocked for a secret says so", tool(r9, "push", "main"), 2, ["PUSH_BLOCKED GitHub found a secret"], ["PUSH_REJECTED"])
+        r10 = repo(t / "declined")
+        gh_remote(t, r10, "declined", "#!/bin/sh\necho 'policy: branch is protected' >&2\nexit 1\n")
+        sh(r10, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        expect("a push a remote rule declines says so", tool(r10, "push", "main"), 2, ["PUSH_BLOCKED the remote declined"], ["NET_FAILED"])
+        r11 = repo(t / "prepush")
+        gh_remote(t, r11, "prepush")
+        sh(r11, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        h = r11 / ".git/hooks/pre-push"; h.write_text("#!/bin/sh\necho 'lint failed' >&2\nexit 1\n"); h.chmod(0o755)
+        expect("a failing pre-push hook is named as a hook", tool(r11, "push", "main"), 2, ["HOOK_FAILED"], ["NET_FAILED"])
+
+        # Push re-screens what it sends, unless the user confirmed those exact hits.
+        r12 = repo(t / "rescreen")
+        gh_remote(t, r12, "rescreen")
+        write(r12 / "s.py", SECRET); commit_all(r12, "a")
+        r = tool(r12, "push", "main")
+        expect("push re-screens the commits it sends", r, 1, ["HISTORY_CONTENT_HIT", "s.py"], ["PUSHED"])
+        hits = "".join(line + "\n" for line in r.stdout.splitlines() if line.startswith("HISTORY_"))
+        confirmed = LISTS / "confirmed.txt"; confirmed.write_text(hits)
+        expect("push goes ahead for hits the user confirmed", tool(r12, "push", "main", str(confirmed)), 0, ["PUSHED main"])
+
+        # The GitHub guard runs for real: a local remote is refused.
+        rg = repo(t / "guard")
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "guard.git")
+        sh(rg, "git", "remote", "add", "origin", "../guard.git")
+        sh(rg, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        expect("push refuses a non-GitHub origin", tool(rg, "push", "main"), 2, ["isn't GitHub"], ["PUSHED"])
+        if sh(t / "guard.git", "git", "rev-parse", "-q", "--verify", "main", check=False).returncode == 0:
+            failures.append("push reached a non-GitHub remote")
 
     for f in failures:
         print(f"::error::{f}")

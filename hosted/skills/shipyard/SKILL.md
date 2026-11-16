@@ -71,14 +71,15 @@ Shipyard dashboard.
      line break or control character): tell the user, and don't commit those files.
    - `shipyard-git.sh destination` prints `PUSH_TO` for each GitHub URL origin pushes to, with any credentials in
      it hidden. `NOT_GITHUB` or `NO_ORIGIN`: see below.
-   - After `shipyard-git.sh fetch`, the branch is pushed (`git rev-parse HEAD` equals `git rev-parse @{u}`), and
-     inventory lists nothing except files the user chose to keep local in step 3. They aren't deployed.
+   - After `shipyard-git.sh fetch`, the branch is pushed (`git rev-parse HEAD` equals `git rev-parse origin/<branch>`),
+     and inventory lists nothing except files the user chose to keep local in step 3. They aren't deployed.
 
-   `fetch`, `default-branch` and `push` don't wait at password prompts and keep the user's own SSH setup. On
-   `NET_FAILED`, tell the user what it says: the remote needs credentials, or this machine hasn't connected to that
-   host before.
+   `fetch`, `default-branch` and `push` don't wait at password prompts or pop up credential dialogs, and keep the
+   user's own SSH setup. On `NET_FAILED`, tell the user what it says: the remote needs credentials, this machine hasn't
+   connected to that host before, or the network is off (some clients sandbox it: the user may need to allow it).
 
-   If there's no `origin` and no other remote points at GitHub (`git remote -v`), and `gh auth status` succeeds, offer
+   If there's no `origin` and no other remote is a GitHub one (`shipyard-git.sh remotes`, which hides credentials;
+   don't run `git remote -v`, which doesn't), and `gh auth status` succeeds, offer
    to create a private repo in the proposal below (`gh repo create <owner>/<name> --private --source . --remote
    origin`, naming the owner), with `git init` first if the folder isn't a repo. If another remote (for example
    `upstream`) is on GitHub, ask which repo they mean instead. If `origin` exists but isn't GitHub, tell the user
@@ -103,15 +104,17 @@ Shipyard dashboard.
    - **Screen before anything changes**, before you run `git init`, create a repo or commit: write every path you'd
      commit to a list file, and run `shipyard-git.sh screen <list file>`, adding `--new-repo` before the file when
      you'd create the repo. With nothing to commit, use an empty list file: it still screens the commits a push
-     sends. It prints only file names and commit hashes, never values:
+     sends. It never prints file contents; commit subjects that look like a secret are hidden:
      - `NAME_HIT`, `TOO_BIG`: leave the file out (see the never-commit list below).
-     - `CONTENT_HIT`: a secret-looking line. Name the file and leave it out unless the user says it's safe.
+     - `CONTENT_HIT`: a secret-looking line. Name the file and leave it out unless the user says it's safe. If they
+       do, copy that exact `CONTENT_HIT` line into a confirmed-hits file for the commit.
      - `BINARY_NOT_SCANNED`: a binary file the screen can't read. Name it in the proposal so the user can check it.
      - `COMMIT`, `COMMITS_TOTAL`: the commits the push sends. Show every one in the proposal; when there are more
        than fit, the line names a file that lists them all.
-     - `HISTORY_NAME_HIT`, `HISTORY_CONTENT_HIT`: a commit the push sends holds a never-commit file or a secret-looking
-       line. Name the commit and file and ask the user to look: if it isn't a secret, they can say so and you go on;
-       if it is, don't push, and tell them it has to be removed from git history and rotated.
+     - `HISTORY_NAME_HIT`, `HISTORY_CONTENT_HIT`, `HISTORY_MESSAGE_HIT`: a commit the push sends holds a never-commit
+       file, a secret-looking line, or a secret-looking commit message. Name the commit (and file) and ask the user to
+       look: if it isn't a secret, they can say so, you copy that exact line into the confirmed-hits file, and you go
+       on; if it is, don't push, and tell them it has to be removed from git history and rotated.
      - `SCREEN_FAILED`, exit code 2, or a screen you couldn't run counts as a hit on everything: commit and push
        nothing, and tell the user.
 
@@ -123,15 +126,18 @@ Shipyard dashboard.
      (`node_modules/`, `.venv/`) or files bigger than 50 MB either. Leave them out, name them, and offer a `.gitignore`
      entry for them as part of the commit. Ask before leaving out `dist/`, `build/` or `vendor/`: some repos commit them on purpose.
    - **After the yes**, in this order: `git init` if the folder isn't a repo; `git switch -c <branch>` if you proposed
-     a new branch; if there are files to commit, write the message to a file and run `shipyard-git.sh commit <list
-     file> <message file>` with the list you screened; create the repo if needed; `shipyard-git.sh push <branch>`,
-     which pushes that branch only. Commit only through the script: never `git add -A` or `git add .`. It refuses a
-     folder, a never-commit file or an empty list, and puts the index back if the commit fails. On `NO_IDENTITY`, ask
-     the user to set their git name and email; on `IN_PROGRESS`, to finish or abort their merge or rebase first. If
-     the push after `gh repo create` fails on credentials, ask before running `gh auth setup-git`: it changes the
-     user's global git credential helper. Never force-push or rebase. On `PUSH_REJECTED` (the remote has newer
-     commits), `PUSH_BLOCKED` (GitHub or a remote rule refused it, for example for a secret) or `HOOK_FAILED`, stop
-     and tell the user what it says.
+     a new branch; if there are files to commit, write the message to a file (no secrets in it) and run
+     `shipyard-git.sh commit <list file> <message file> [confirmed-hits file]` with the list you screened; create the
+     repo if needed; `shipyard-git.sh push <branch> [confirmed-hits file]`, which screens the commits it's about to
+     send again and pushes that branch only, without tags. Commit only through the script: never `git add -A` or
+     `git add .`. It refuses a folder, a never-commit file, an empty list or a secret-looking file the user didn't
+     confirm, puts the index back if the commit fails, and undoes the commit if a git hook added files or a secret.
+     If push prints hits instead of pushing, something changed since the proposal: show them to the user again. On
+     `NO_IDENTITY`, ask the user to set their git name and email; on `IN_PROGRESS`, to finish or abort their merge or
+     rebase first. If the push after `gh repo create` fails on credentials, ask before running `gh auth setup-git`:
+     it changes the user's global git credential helper. Never force-push or rebase. On `PUSH_REJECTED` (the remote
+     has newer commits), `PUSH_BLOCKED` (GitHub or a remote rule refused it, for example for a secret) or
+     `HOOK_FAILED` (a local pre-push hook stopped it), stop and tell the user what it says.
 4. **Plan.** Call `plan_application` with the repo and branch. Nothing changes yet. If the plan has an `existing_app`,
    this repo and branch already have an app: tell the user, don't ask for any env values, and offer
    `update_application` for services and routes.
