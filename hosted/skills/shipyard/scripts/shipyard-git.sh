@@ -26,7 +26,8 @@
 # With GIT_SSH set (for example plink), ssh's BatchMode can't be added, so an
 # ssh passphrase prompt can still wait for input.
 set -u
-export LC_ALL=C GIT_LITERAL_PATHSPECS=1 GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never GIT_NO_REPLACE_OBJECTS=1
+USER_LC_ALL_SET=${LC_ALL+set}; USER_LC_ALL=${LC_ALL-}
+export LC_ALL=C GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never GIT_NO_REPLACE_OBJECTS=1
 export GIT_ASKPASS= SSH_ASKPASS=
 shopt -s nocasematch
 
@@ -40,6 +41,7 @@ NEVER="(^|/)(\.env(\.[^/]*)?|[^/]*\.env|\.envrc|[^/]*\.(pem|key|p12|pfx|p8|jks|k
 ENV_OK='(^|/)\.env\.(example|sample|template)$'
 MAX_BYTES=52428800
 CAP=200
+MAX_HISTORY=${SHIPYARD_MAX_HISTORY:-3000}
 OUT_DIR=""
 
 TMP=$(mktemp -d 2>/dev/null) || { echo "SCREEN_FAILED cannot make a temp folder"; exit 2; }
@@ -51,7 +53,14 @@ never() { [[ $1 =~ $NEVER ]] && ! [[ $1 =~ $ENV_OK ]]; }
 bad_name() { [[ $1 == *[[:cntrl:]]* ]]; }
 in_repo() { git rev-parse --git-dir >/dev/null 2>&1; }
 has_commits() { git rev-parse -q --verify HEAD >/dev/null 2>&1; }
-redact() { sed -E 's#(://)[^/@[:space:]]*@#\1***@#g'; }
+# Run a git command that runs the user's hooks with their own locale and replace refs.
+as_user() {
+  if [ -n "$USER_LC_ALL_SET" ]; then env -u GIT_NO_REPLACE_OBJECTS LC_ALL="$USER_LC_ALL" "$@"
+  else env -u GIT_NO_REPLACE_OBJECTS -u LC_ALL "$@"; fi
+}
+# A NUL-separated path list as literal pathspecs, so no path is read as a glob.
+literal() { perl -0pe 's/^/:(literal)/' < "$1"; }
+redact() { sed -E 's#(://)[^/?\#[:space:]]*@#\1***@#g'; }
 # One line of git or hook output, hidden if it looks like a secret.
 safe_line() { if [[ $1 =~ $P ]]; then echo "[details hidden: they look like a secret]"; else printf '%s\n' "$1" | redact | cut -c1-200; fi; }
 err_line() {
@@ -72,7 +81,9 @@ top_level() {
 url_host() {
   local u=$1 rest auth
   case "$u" in
-    *://*) rest=${u#*://}; auth=${rest%%/*}; auth=${auth##*@}; auth=${auth%%:*}; printf '%s' "$auth" ;;
+    *://*) rest=${u#*://}; auth=${rest%%[/?#]*}
+           [[ $auth == *[\\[:space:]]* ]] && return 0
+           auth=${auth##*@}; auth=${auth%%:*}; printf '%s' "$auth" ;;
     /*|./*|../*|~*|[A-Za-z]:[\\/]*) ;;
     *:*) rest=${u%%:*}; printf '%s' "${rest##*@}" ;;
   esac
@@ -252,29 +263,81 @@ history_screen() {
       | awk '$2 == "commit" { print "^" $1 }' > "$TMP/exclude"
     echo "RANGE commits the push destination doesn't have"
   fi
-  local -a L=(git -c core.quotePath=false log --stdin HEAD)
+  # Pin what user config could change about the output we parse.
+  local -a L=(git -c core.quotePath=false -c log.showSignature=false -c color.ui=never -c diff.noprefix=false
+    -c diff.mnemonicPrefix=false -c diff.relative=false log --root --no-color --no-ext-diff --no-renames --stdin HEAD)
+  local -a DM=(-m)
+  git log --diff-merges=remerge -1 HEAD >/dev/null 2>&1 && DM=(--diff-merges=remerge)
   "${L[@]}" --format='%h%x09%s' < "$TMP/exclude" > "$TMP/commits" 2>/dev/null || fail "git log failed"
   local h s total
+  total=$(wc -l < "$TMP/commits" | tr -d ' ')
+  if [ "$total" -gt "$MAX_HISTORY" ]; then
+    echo "HISTORY_TOO_LONG $total commits would need screening, more than $MAX_HISTORY: ask the user to push this history themselves"
+    exit 2
+  fi
   while IFS=$'\t' read -r h s; do
     if [[ $s =~ $P ]]; then echo "COMMIT $h [subject hidden: it looks like a secret]"
     else echo "COMMIT $h $s"; fi
   done < "$TMP/commits" > "$TMP/commitlines"
   emit_capped "$TMP/commitlines" COMMITS_TOTAL
-  total=$(wc -l < "$TMP/commits" | tr -d ' ')
   [ "$total" -gt "$CAP" ] || echo "COMMITS_TOTAL $total"
+
+  # The same range was screened a moment ago (screen, then push): reuse it.
+  local key cache
+  # Keyed on the range and on this script, so an updated scanner never reuses an old result.
+  key=$( { git rev-parse HEAD; cat "$TMP/exclude"; cat -- "$0"; } | git hash-object --stdin) || fail "git hash-object failed"
+  cache=$(cache_dir)/$key
+  if [ -f "$cache" ] && [ -O "$cache" ]; then cp "$cache" "$TMP/historyhits"; return 0; fi
+
   # Commit messages, subject and body.
   "${L[@]}" -E -i --grep="$P" --format='HISTORY_MESSAGE_HIT %h' < "$TMP/exclude" > "$TMP/msghits" 2>/dev/null || fail "git log --grep failed"
-  # Never-commit and unreadable file names in any commit, merges included.
-  "${L[@]}" -m -z --name-only --format='%x01%h' < "$TMP/exclude" > "$TMP/names" 2>/dev/null || fail "git log failed"
+  # Never-commit and unreadable file names in any commit, merges included; each commit is its own hit.
+  "${L[@]}" "${DM[@]}" -z --name-only --format='%x01%h' < "$TMP/exclude" > "$TMP/names" 2>/dev/null || fail "git log failed"
   local c path
   log_names < "$TMP/names" | while IFS=$'\t' read -r c path; do
     if bad_name "$path" || never "$path"; then printf '%s\t%s\n' "$c" "$path"; fi
-  done | awk -F'\t' '!seen[$2]++ { print "HISTORY_NAME_HIT " $1 " " $2 }' > "$TMP/namehits"
-  # Secret-looking lines, in text and binary diffs alike, whatever .gitattributes says.
-  "${L[@]}" -m --text --no-textconv -E -i -G"$P" -z --name-only --format='%x01%h' < "$TMP/exclude" > "$TMP/content" 2>/dev/null \
-    || fail "git log -G failed"
-  log_names < "$TMP/content" | awk -F'\t' '!seen[$0]++ { print "HISTORY_CONTENT_HIT " $1 " " $2 }' > "$TMP/contenthits"
+  done | awk -F'\t' '!seen[$0]++ { print "HISTORY_NAME_HIT " $1 " " $2 }' > "$TMP/namehits"
+  # Secret-looking added or removed lines, in one pass over the patches (text or not, whatever .gitattributes says).
+  set -o pipefail
+  "${L[@]}" "${DM[@]}" --text --no-textconv -p --src-prefix=a/ --dst-prefix=b/ --format='%x01%h' < "$TMP/exclude" 2>/dev/null \
+    | SHIPYARD_P="$P" perl -ne '
+        BEGIN { $re = qr/$ENV{SHIPYARD_P}/i; $c = ""; $p = ""; $q = ""; $h = 0 }
+        chomp;
+        if (/^\x01(\S+)$/) { $c = $1; $h = 0; next }
+        if (/^diff --git /) { $h = 1; $p = ""; $q = ""; next }
+        if ($h) {
+          if (/^--- (?:a\/)?(.*?)\t?$/) { $q = $1 eq "/dev/null" ? "" : $1 }
+          elsif (/^\+\+\+ (?:b\/)?(.*?)\t?$/) { $p = $1 eq "/dev/null" ? $q : $1 }
+          elsif (/^@@/) { $h = 0 }
+          next;
+        }
+        if (/^[+-](.*)$/s && $1 =~ $re) { my $k = "$c\t$p"; print "HISTORY_CONTENT_HIT $c $p\n" unless $seen{$k}++ }
+      ' > "$TMP/contenthits" || fail "couldn't scan the commits' changes"
+  set +o pipefail
   cat "$TMP/msghits" "$TMP/namehits" "$TMP/contenthits" > "$TMP/historyhits"
+  cp "$TMP/historyhits" "$cache" 2>/dev/null || true
+}
+
+# A private, per-user folder for screen results, so push can reuse what screen just did.
+cache_dir() {
+  local d="${TMPDIR:-/tmp}/shipyard-git-cache-$(id -u)"
+  if [ ! -d "$d" ]; then mkdir -m 700 "$d" 2>/dev/null || { echo "$TMP"; return; }; fi
+  if [ -O "$d" ] && [ ! -L "$d" ]; then echo "$d"; else echo "$TMP"; fi
+}
+# Each confirmed CONTENT_HIT as "blob<TAB>path"; exact confirmed lines in $TMP/okexact.
+read_confirmed() {
+  : > "$TMP/okpairs"; : > "$TMP/okexact"
+  [ -n "${1:-}" ] || return 0
+  [ -f "$1" ] || fail "no confirmed-hits file: $1"
+  tr -d '\r' < "$1" > "$TMP/okexact"
+  sed -n -E 's/^CONTENT_HIT ([0-9a-f]+) (.*)$/\1	\2/p' "$TMP/okexact" > "$TMP/okpairs"
+}
+# "blob<TAB>path" for the working-tree files in a NUL-separated list (as git would store them).
+blob_pairs() { # $1 NUL list
+  tr '\0' '\n' < "$1" > "$TMP/bp.paths"
+  [ -s "$TMP/bp.paths" ] || return 0
+  git hash-object --stdin-paths < "$TMP/bp.paths" > "$TMP/bp.blobs" 2>/dev/null || fail "git hash-object failed"
+  paste "$TMP/bp.blobs" "$TMP/bp.paths"
 }
 
 screen() {
@@ -283,14 +346,14 @@ screen() {
   top_level
   read_paths "${1:-}"
   : > "$TMP/filehits"; : > "$TMP/scan"
-  local p link
+  local p link h
   while IFS= read -r -d '' p; do
     if never "$p"; then
       echo "NAME_HIT $p" >> "$TMP/filehits"
     elif [ -L "$p" ]; then
       # Git stores a symlink as its target text; check that, never what it points to.
       link=$(readlink -- "$p") || fail "couldn't read the link $p"
-      [[ $link =~ $P ]] && echo "CONTENT_HIT $p" >> "$TMP/filehits"
+      [[ $link =~ $P ]] && echo "CONTENT_HIT $(printf '%s' "$link" | git hash-object --stdin) $p" >> "$TMP/filehits"
     elif [ ! -e "$p" ]; then
       echo "DELETED $p"
     elif [ -d "$p" ]; then
@@ -307,7 +370,7 @@ screen() {
     while IFS= read -r -d '' p; do echo "TOO_BIG $p" >> "$TMP/filehits"; done < "$TMP/big"
     xargs -0 grep -lIE -i --null -e "$P" -- < "$TMP/small" > "$TMP/content" 2>"$TMP/err"
     [ -s "$TMP/err" ] && fail "couldn't read every file: $(err_line)"
-    while IFS= read -r -d '' p; do echo "CONTENT_HIT $p" >> "$TMP/filehits"; done < "$TMP/content"
+    blob_pairs "$TMP/content" | while IFS=$'\t' read -r h p; do echo "CONTENT_HIT $h $p"; done >> "$TMP/filehits"
     # Binary files (perl's -B, the same idea as grep -I) can't be read for secrets: name them.
     perl -0ne 'chomp; print "$_\0" if -s $_ && -B $_' < "$TMP/small" > "$TMP/notext" || fail "couldn't check for binary files"
     while IFS= read -r -d '' p; do echo "BINARY_NOT_SCANNED $p"; done < "$TMP/notext"
@@ -345,10 +408,7 @@ commit() {
   [ -z "$(git ls-files -u)" ] || { echo "IN_PROGRESS there are unmerged files"; exit 2; }
   read_paths "${1:-}"
   [ "$N" -gt 0 ] || fail "no paths given: nothing committed"
-  local confirmed="${3:-}"
-  if [ -n "$confirmed" ] && [ ! -f "$confirmed" ]; then fail "no confirmed-hits file: $confirmed"; fi
-  : > "$TMP/ok"
-  [ -n "$confirmed" ] && { grep -E '^CONTENT_HIT ' "$confirmed" | sed 's/^CONTENT_HIT //' > "$TMP/ok" || true; }
+  read_confirmed "${3:-}"
   local p
   : > "$TMP/scan"
   while IFS= read -r -d '' p; do
@@ -356,11 +416,13 @@ commit() {
     [ -d "$p" ] && [ ! -L "$p" ] && fail "$p is a folder: list its files"
     [ -f "$p" ] && [ ! -L "$p" ] && printf '%s\0' "$p" >> "$TMP/scan"
   done < "$TMP/paths"
-  # Re-screen the files as they are now; only hits the user confirmed may go in.
+  # Re-screen the files as they are now; only hits the user confirmed, with that exact content, may go in.
   if [ -s "$TMP/scan" ]; then
-    xargs -0 grep -lIE -i -e "$P" -- < "$TMP/scan" 2>/dev/null | grep -vxF -f "$TMP/ok" > "$TMP/unconfirmed" || true
-    [ -s "$TMP/unconfirmed" ] && fail "files look like they hold a secret and the user hasn't confirmed them: run screen again"
+    xargs -0 grep -lIE -i --null -e "$P" -- < "$TMP/scan" > "$TMP/nowhits" 2>/dev/null || true
+    blob_pairs "$TMP/nowhits" | grep -vxF -f "$TMP/okpairs" > "$TMP/unconfirmed" || true
+    [ -s "$TMP/unconfirmed" ] && fail "files look like they hold a secret and the user hasn't confirmed them as they are now: run screen again"
   fi
+  literal "$TMP/paths" > "$TMP/pathspecs"
 
   local idx old
   idx=$(git rev-parse --git-path index)
@@ -380,8 +442,8 @@ commit() {
   }
   undo() { if [ -n "$old" ]; then git update-ref HEAD "$old"; else git update-ref -d HEAD; fi; restore; }
 
-  git add --pathspec-from-file="$TMP/paths" --pathspec-file-nul >"$TMP/out" 2>"$TMP/err" || { restore; fail "git add failed: $(err_line)"; }
-  git commit -q -F "$2" --pathspec-from-file="$TMP/paths" --pathspec-file-nul >"$TMP/out" 2>"$TMP/err" || {
+  git add --pathspec-from-file="$TMP/pathspecs" --pathspec-file-nul >"$TMP/out" 2>"$TMP/err" || { restore; fail "git add failed: $(err_line)"; }
+  as_user git commit -q -F "$2" --pathspec-from-file="$TMP/pathspecs" --pathspec-file-nul >"$TMP/out" 2>"$TMP/err" || {
     restore; fail "git commit failed: $(err_line)"; }
 
   # Check what actually landed: hooks can add files or change them.
@@ -393,8 +455,14 @@ commit() {
     undo
     fail "a git hook added files you didn't list, so the commit was undone: $(head -n 5 "$TMP/extra" | while IFS= read -r p; do safe_line "$p"; done | tr '\n' ' ')"
   fi
-  xargs -0 git grep -lIE -i -e "$P" HEAD -- < "$TMP/landed" 2>/dev/null | sed 's/^HEAD://' \
-    | grep -vxF -f "$TMP/ok" > "$TMP/landedhits" || true
+  literal "$TMP/landed" | xargs -0 git grep -lzIE -i -e "$P" HEAD -- > "$TMP/landedgrep" 2>/dev/null || true
+  perl -0ne 'chomp; s/^HEAD://; print "HEAD:$_\n"' < "$TMP/landedgrep" > "$TMP/landedrefs"
+  if [ -s "$TMP/landedrefs" ]; then
+    git cat-file --batch-check='%(objectname)' < "$TMP/landedrefs" > "$TMP/landedblobs" 2>/dev/null || { undo; fail "couldn't read the new commit"; }
+    sed 's/^HEAD://' "$TMP/landedrefs" | paste "$TMP/landedblobs" - | grep -vxF -f "$TMP/okpairs" > "$TMP/landedhits" || true
+  else
+    : > "$TMP/landedhits"
+  fi
   if [ -s "$TMP/landedhits" ]; then
     undo
     fail "what landed in the commit looks like it holds a secret (a git hook may have changed it), so the commit was undone"
@@ -409,12 +477,22 @@ push() {
   [ "$(git branch --show-current)" = "$b" ] || fail "HEAD isn't on $b"
   url=$(one_push_url) || fail "origin pushes to more than one URL: ask the user which one, and push to it alone"
   is_github "$url" || fail "origin pushes to $(printf '%s\n' "$url" | redact), which isn't GitHub"
-  if [ -n "$confirmed" ] && [ ! -f "$confirmed" ]; then fail "no confirmed-hits file: $confirmed"; fi
+  read_confirmed "$confirmed"
 
   # Screen exactly what this push sends; hits the user confirmed aren't secrets don't stop it.
-  history_screen dest > "$TMP/range" || exit 2
-  cp "$TMP/historyhits" "$TMP/open"
-  [ -n "$confirmed" ] && { grep -vxF -f "$confirmed" "$TMP/historyhits" > "$TMP/open" || true; }
+  ( history_screen dest ) > "$TMP/range" || { grep -vE '^(COMMIT |COMMITS_TOTAL )' "$TMP/range"; exit 2; }
+  grep -vxF -f "$TMP/okexact" "$TMP/historyhits" > "$TMP/open0" || true
+  # A content hit confirmed before the commit: same file, same content, in the commit that landed it.
+  : > "$TMP/open"
+  local line c f blob
+  while IFS= read -r line; do
+    if [[ $line == "HISTORY_CONTENT_HIT "* ]]; then
+      c=${line#HISTORY_CONTENT_HIT }; f=${c#* }; c=${c%% *}
+      blob=$(printf '%s:%s\n' "$c" "$f" | git cat-file --batch-check='%(objectname)' 2>/dev/null)
+      grep -qxF "$blob	$f" "$TMP/okpairs" && continue
+    fi
+    printf '%s\n' "$line" >> "$TMP/open"
+  done < "$TMP/open0"
   if [ -s "$TMP/open" ]; then
     grep -E '^RANGE' "$TMP/range"
     emit_capped "$TMP/open" HISTORY_HITS_TOTAL

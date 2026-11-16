@@ -194,15 +194,18 @@ def main():
         write(r1 / "app/(auth)/page.tsx", "export default 1\n")
         write(r1 / "pages/i.tsx", "export default 2\n")
         write(r1 / "PATHS", "x\n")
-        expect("screen flags content in a [bracket] path",
-               tool(r1, "screen", lst("b1", "pages/[id].tsx", "app/(auth)/page.tsx", "PATHS")),
-               1, ["CONTENT_HIT pages/[id].tsx", "SCREEN_HITS"], ["CONTENT_HIT app/(auth)/page.tsx", "SCREEN_CLEAN"])
+        r = tool(r1, "screen", lst("b1", "pages/[id].tsx", "app/(auth)/page.tsx", "PATHS"))
+        expect("screen flags content in a [bracket] path", r, 1, [" pages/[id].tsx\n", "SCREEN_HITS"],
+               ["app/(auth)/page.tsx", "SCREEN_CLEAN"])
+        confirmed_b1 = "".join(l + "\n" for l in r.stdout.splitlines() if l.startswith("CONTENT_HIT "))
+        if not re.fullmatch(r"CONTENT_HIT [0-9a-f]{40} pages/\[id\]\.tsx\n", confirmed_b1):
+            failures.append(f"CONTENT_HIT lines must carry the file's blob id: {confirmed_b1!r}")
         write(r1 / "staged.txt", "x\n")
         sh(r1, "git", "add", "staged.txt")
         expect("commit refuses a content hit the user hasn't confirmed",
                tool(r1, "commit", lst("b2", "pages/[id].tsx", "app/(auth)/page.tsx"), msg("b2", "add pages\n")),
                2, ["SCREEN_FAILED"], ["COMMITTED"])
-        ok = LISTS / "ok.txt"; ok.write_text("CONTENT_HIT pages/[id].tsx\n")
+        ok = LISTS / "ok.txt"; ok.write_text(confirmed_b1)
         expect("commit takes paths literally",
                tool(r1, "commit", lst("b2", "pages/[id].tsx", "app/(auth)/page.tsx"), msg("b2", "add pages\n"), str(ok)),
                0, ["COMMITTED"])
@@ -496,6 +499,95 @@ def main():
         hits = "".join(line + "\n" for line in r.stdout.splitlines() if line.startswith("HISTORY_"))
         confirmed = LISTS / "confirmed.txt"; confirmed.write_text(hits)
         expect("push goes ahead for hits the user confirmed", tool(r12, "push", "main", str(confirmed)), 0, ["PUSHED main"])
+
+
+        # --- Pass-2 criticals ---
+        # 1. '?' or '#' ends a URL's authority: the host is what git connects to, and is what's shown.
+        rq = repo(t / "authority")
+        for tricky in ("https://127.0.0.1:9?@github.com/o/r.git", "https://127.0.0.1:9#@github.com/o/r.git"):
+            sh(rq, "git", "remote", "remove", "origin", check=False)
+            sh(rq, "git", "remote", "add", "origin", tricky)
+            r = tool(rq, "destination")
+            expect(f"destination rejects {tricky}", r, 0, ["NOT_GITHUB", "127.0.0.1"], ["PUSH_TO", "***@github.com"])
+        sh(rq, "git", "remote", "set-url", "origin", "https://u:p@ss" + "synthetic@github.com/o/r.git")
+        expect("redaction covers a password with @ in it", tool(rq, "destination"), 0, ["PUSH_TO https://***@github.com/o/r.git"])
+
+        # 2. log.showRoot=false doesn't hide the first commit.
+        rt = repo(t / "showroot")
+        sh(rt, "git", "config", "log.showRoot", "false")
+        sh(rt, "git", "config", "color.ui", "always")
+        sh(rt, "git", "config", "log.showSignature", "true")
+        write(rt / ".env", "A=1\n"); write(rt / "s.py", SECRET); commit_all(rt, "root")
+        expect("the first commit is screened whatever log.showRoot says", tool(rt, "screen", "--new-repo", lst("sr")), 1,
+               ["HISTORY_NAME_HIT", ".env", "HISTORY_CONTENT_HIT", "s.py"])
+
+        # 3. Every commit holding a never-commit file is its own hit.
+        rv = repo(t / "versions")
+        write(rv / ".env", "DB=one\n"); commit_all(rv, "one")
+        write(rv / ".env", "DB=two\n"); commit_all(rv, "two")
+        r = tool(rv, "screen", "--new-repo", lst("sv"))
+        if r.stdout.count("HISTORY_NAME_HIT") != 2:
+            failures.append(f"each commit holding .env must be its own hit: {r.stdout!r}")
+
+        # 4. The user's hooks run with their own pathspec and locale settings.
+        rk = repo(t / "hookenv")
+        hk = rk / ".git/hooks/pre-commit"
+        hk.write_text("#!/bin/sh\ngit diff --cached --name-only -- '*.py' > .git/hook-saw\n"
+                      "[ -n \"$GIT_LITERAL_PATHSPECS\" ] && echo LITERAL >> .git/hook-saw\nexit 0\n")
+        hk.chmod(0o755)
+        write(rk / "app.py", "x = 1\n")
+        expect("commit with a glob-scoped hook", tool(rk, "commit", lst("hk", "app.py"), msg("hk", "x\n")), 0, ["COMMITTED"])
+        saw = (rk / ".git/hook-saw").read_text() if (rk / ".git/hook-saw").exists() else ""
+        if "app.py" not in saw or "LITERAL" in saw:
+            failures.append(f"the user's hook didn't see its glob match, or saw GIT_LITERAL_PATHSPECS: {saw!r}")
+
+        # 5 and 6. A confirmed hit, including in a non-ASCII path, commits and then pushes without a second ask;
+        # a changed file needs a new confirmation.
+        rcf = repo(t / "confirmflow")
+        gh_remote(t, rcf, "confirmflow")
+        write(rcf / "caf\u00e9/x.py", SECRET); write(rcf / "a.txt", "a\n")
+        r = tool(rcf, "screen", "--new-repo", lst("cf", "caf\u00e9/x.py", "a.txt"))
+        conf = LISTS / "cf-confirmed.txt"
+        conf.write_text("".join(l + "\n" for l in r.stdout.splitlines() if l.startswith(("CONTENT_HIT ", "HISTORY_"))))
+        if "caf\u00e9/x.py" not in conf.read_text():
+            failures.append(f"screen didn't report the non-ASCII hit: {r.stdout!r}")
+        write(rcf / "caf\u00e9/x.py", SECRET.replace("abc", "xyz"))
+        expect("a confirmed file that changed needs a new confirmation",
+               tool(rcf, "commit", lst("cf", "caf\u00e9/x.py", "a.txt"), msg("cf", "x\n"), str(conf)), 2, ["SCREEN_FAILED"], ["COMMITTED"])
+        write(rcf / "caf\u00e9/x.py", SECRET)
+        expect("commit takes a confirmed non-ASCII hit",
+               tool(rcf, "commit", lst("cf", "caf\u00e9/x.py", "a.txt"), msg("cf", "x\n"), str(conf)), 0, ["COMMITTED"])
+        expect("push accepts the hit confirmed before the commit", tool(rcf, "push", "main", str(conf)), 0, ["PUSHED main"])
+
+        # Push says why its own screen failed.
+        rnf = repo(t / "netfail")
+        sh(rnf, "git", "remote", "add", "origin", "ssh://git@github.com/does-not-exist.git")
+        sh(rnf, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        expect("push reports a failed screen", tool(rnf, "push", "main"), 2, ["NET_FAILED"])
+
+        # 7. A long history is screened in one pass, fast, and push reuses that screen.
+        rl = repo(t / "long")
+        stream = []
+        for i in range(300):
+            body = f"line {i}\n"
+            stream.append(f"commit refs/heads/main\ncommitter t <t@example.invalid> {1700000000 + i} +0000\n"
+                          f"data {len(f'c{i}')}\nc{i}\n"
+                          f"M 100644 inline f{i % 20}.txt\ndata {len(body)}\n{body}\n")
+        r = subprocess.run(["git", "fast-import", "--quiet"], cwd=rl, input="".join(stream), text=True,
+                           capture_output=True, env=ENV)
+        if r.returncode != 0:
+            raise RuntimeError(f"fast-import: {r.stderr.strip()}")
+        sh(rl, "git", "reset", "-q", "--hard", "main")
+        write(rl / "late.py", SECRET); commit_all(rl, "late")
+        start = time.monotonic()
+        r = tool(rl, "screen", "--new-repo", lst("lg"))
+        took = time.monotonic() - start
+        expect("a 300-commit history is screened", r, 1, ["HISTORY_CONTENT_HIT", "late.py"])
+        # gstack-timing-ok: a generous bound that only a per-commit or pickaxe-per-diff scan exceeds.
+        if took > 20:
+            failures.append(f"screening 300 commits took {took:.0f}s")
+        expect("a history over the limit stops instead of hanging",
+               tool(rl, "screen", "--new-repo", lst("lg2"), env={**ENV, "SHIPYARD_MAX_HISTORY": "100"}), 2, ["HISTORY_TOO_LONG"])
 
         # The GitHub guard runs for real: a local remote is refused.
         rg = repo(t / "guard")
