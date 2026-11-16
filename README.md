@@ -80,9 +80,10 @@ stop or restart an environment, rebuild on request, set env vars, read service l
 plugin above, or the Shipyard dashboard, for those.
 
 New to Shipyard? Open a repo and ask your agent to "put this repo on Shipyard". The skill walks you through connecting
-and signing up, offers to create a private GitHub repo with the GitHub CLI if the repo has no remote yet (otherwise it
-points you to github.com/new), and if the repo has no Docker Compose file, it analyzes the repo, writes one, and checks it with Docker Compose, when Docker is available. Nothing is
-committed or pushed until you approve the list it shows you.
+and signing up. If the repo has no remote yet, it offers to create a private GitHub repo with the GitHub CLI, or points
+you to github.com/new without it. If the repo has no Docker Compose file, it analyzes the repo, writes one, and checks
+it with Docker Compose when Docker is available. Nothing is committed or pushed until you approve the list it shows
+you.
 
 | Client | Install |
 |---|---|

@@ -100,8 +100,8 @@ one the agent works in. Install this plugin or the CLI plugin, not both: each de
 - The agent asks before it commits, pushes, creates a repo or changes an app. Adding an app takes two yeses: one for
   everything before the plan, and one before the app is created.
 - It lists the files it wrote apart from yours, and commits only your files the build needs. It leaves `.env` files,
-  keys and Terraform state out, won't push if they're in commits GitHub doesn't have yet, and never force-pushes or
-  asks you to paste a token.
+  keys and Terraform state out, screens the commits it would push for secrets and asks you about any hit, and never
+  force-pushes or asks you to paste a token.
 - Your client decides whether a tool can run without asking. Keep approval on for `create_application` and
   `update_application`.
 

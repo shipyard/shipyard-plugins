@@ -16,7 +16,16 @@
   .claude-plugin/plugin.json, and the marketplace lists each plugin from its
   own folder.
 - Every skills/*/SKILL.md has YAML frontmatter with a name matching its folder
-  and a description, and every `references/....md` file it names exists next to it.
+  and a description, and every `references/....md` or `scripts/....sh` file it
+  names exists next to it.
+- Every quoted section name a skill or its references point the agent at
+  (`see "Connecting"`) is a heading in that skill or its references.
+- The hosted skill keeps the safety rules listed in SAFETY_RULES (no `git add
+  -A`, no force-push, no proposed secrets, the secret screen), in SKILL.md and
+  references/compose.md. A listed file that no longer exists is an error too.
+
+The hosted skill's git script (scripts/shipyard-git.sh) and its secret pattern
+are tested separately, against fixture repos, by test_shipyard_git.py.
 
 Exits 1 with one line per problem.
 """
@@ -65,8 +74,9 @@ TOKEN_REF = re.compile(r"user_config|SHIPYARD_API_TOKEN|api_token", re.IGNORECAS
 # Words that are fine in prose, so they're checked only in keys and server definitions.
 TOKEN_WORD = re.compile(r"token|authorization|bearer", re.IGNORECASE)
 ARG = re.compile(r"^-{0,2}[a-z][a-z0-9-]*$")
-# A skill's pointer to a file it tells the agent to read, like `references/compose.md`.
-SKILL_REF = re.compile(r"(?<![\w/:.-])(?:\./)?references/[A-Za-z0-9_./-]+\.md")
+# A skill's pointer to a file it tells the agent to read or run, like
+# `references/compose.md` or `scripts/shipyard-git.sh`.
+SKILL_REF = re.compile(r"(?<![\w/:.-])(?:\./)?(?:references/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.sh)")
 # A skill's pointer to one of its own sections, like `see "Connecting"`.
 SECTION_REF = re.compile(r'\b(?:see|from|go to|go back to|as in) "([^"]+)"', re.IGNORECASE)
 # Rules that keep the hosted skill's one-yes commit and push safe, per file in
@@ -79,13 +89,14 @@ SAFETY_RULES = {
         "Never propose a secret",
         "Never ask the user to paste a token",
         "`*.tfstate*`",
-        "--untracked-files=all",
-        "Screen before anything changes",
+        "shipyard-git.sh screen <list file>",
+        "SCREEN_FAILED",
+        "never paste file paths into a shell command",
+        "never put a commit message in one either",
     ],
     "hosted/skills/shipyard/references/compose.md": [
         "replace each with `${NAME}`",
-        "never force-push",
-        "Screen, commit and push exactly as SKILL.md's one proposal says",
+        "exactly as SKILL.md's one proposal says",
     ],
 }
 safety_seen = set()

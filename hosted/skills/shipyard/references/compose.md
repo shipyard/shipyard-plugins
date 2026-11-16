@@ -113,6 +113,7 @@ Every app needs at least one service with a route, or there's nothing to open.
 
 - **Runtime variables** go in `environment`, as `NAME: ${NAME}` for anything the user sets in Shipyard. Give a
   literal value only when it's safe to commit (a port, a feature flag, the backing service's local password).
+  Keep a local password short, like `app`, so SKILL.md's secret screen doesn't flag it.
 - **Build args** are variables the build needs, such as `NEXT_PUBLIC_*`, `VITE_*` or `REACT_APP_*`, which frontends
   bake in at build time. Put them under `build.args` as `NAME: ${NAME}`, and make sure the Dockerfile declares
   `ARG NAME`. A build arg set only in `environment` is empty during the build.
@@ -151,14 +152,8 @@ These pass `docker compose up` on a laptop but break on Shipyard. Point each one
 
 ## 6. Commit, push, plan
 
-1. Put the full file (and any new Dockerfile or `.dockerignore` change) in SKILL.md's one proposal, with anything
-   else that needs committing and the push, and wait for one yes. Don't ask about the file, the branch and the push
-   separately.
-2. Pick the branch as SKILL.md's one proposal says: the current one, or a new one (for example
-   `add-shipyard-compose`) when the current one is the default branch. On a new branch, tell them the app stays on
-   it: after they merge, offer `update_application` to move it to the main branch, with their yes.
-3. Screen, commit and push exactly as SKILL.md's one proposal says, including its never-commit list and its screen
-   before anything changes. Commit only the files you showed, by path. Never push without that yes, and never
-   force-push.
-4. Run the preflight again, then call `plan_application`. For a file kept outside the root, go back to "Keeping the
+1. Put the full file (and any new Dockerfile or `.dockerignore` change) in SKILL.md's one proposal, and choose the
+   branch, screen, commit and push exactly as SKILL.md's one proposal says. On a new branch, tell the user the app
+   stays on it: after they merge, offer `update_application` to move it to the main branch, with their yes.
+2. Run the preflight again, then call `plan_application`. For a file kept outside the root, go back to "Keeping the
    file where it is" instead.

@@ -20,7 +20,8 @@ step 1, then go straight to the section for that request.
 1. **Check the connection** with a read: call `get_environments`. If it answers, they're connected. If the `shipyard`
    tools aren't available, or the call fails with `401` or `unauthorized`, see "Connecting" below.
 2. **Run the preflight** from "Adding an app" on the open repo, and look for a compose file. Neither changes the
-   user's files. If the folder isn't a git repo yet, or `git fetch` fails or needs a password, say so.
+   user's files: in a folder that isn't a git repo yet, inventory lists it without running `git init`. If the fetch
+   fails or needs a password, say so.
 3. **Reply briefly:** one sentence on what Shipyard does (a live preview environment for each branch of a GitHub
    repo), then what step 2 found. If step 1's answer already shows an environment for this repo, offer to check it.
    Otherwise make one offer: "Want me to put this repo on Shipyard?" Name in that same offer what it involves
@@ -53,64 +54,84 @@ Shipyard dashboard.
 
 ## Adding an app
 
-1. **Preflight, before planning.** Shipyard builds what's on GitHub, not what's on disk. Check and tell the user what
-   fails:
-   - The open folder is the repo's top level: `git rev-parse --show-toplevel` names it. If it names a parent folder
-     (a monorepo, or a home folder kept in git), ask which one they mean before going on.
-   - `git remote get-url origin` is a GitHub repo.
-   - After `git fetch`, the branch is pushed and `git rev-parse HEAD` equals `git rev-parse @{u}`.
-   - `git status --porcelain --untracked-files=all` lists nothing except files the user chose to keep local in step
-     3. They aren't deployed.
+1. **Preflight, before planning.** Shipyard builds what's on GitHub, not what's on disk. The git steps here and in
+   step 3 go through `scripts/shipyard-git.sh`, next to this file. Below, `shipyard-git.sh <command>` means
+   `bash <this skill's folder>/scripts/shipyard-git.sh <command>`, run from the open folder. It takes file paths and
+   commit messages only as files you write with your file-writing tool (one path per line), so never paste file
+   paths into a shell command, and never put a commit message in one either. Keep those files outside the repo, for
+   example in your scratch or temp folder.
 
-   Run `git fetch` and `git push` with `GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes'` in front, so a
-   password prompt fails instead of hanging; if one fails that way, tell the user the remote needs credentials.
+   It needs a POSIX shell (macOS, Linux, Git Bash or WSL). If you can't run it, don't commit or push anything: tell
+   the user. Exit code 2 means it stopped and changed nothing: tell the user what its last line says. Check, and
+   tell the user what fails:
+   - `shipyard-git.sh inventory` lists the files a commit could include (`FILE`, `DELETED`, `NEVER`, `TOO_BIG`,
+     `UNMERGED`, `BAD_NAME`), and names each dependency folder once (`FOLDER`). It changes nothing, even in a folder
+     that isn't a git repo yet (`NOT_A_REPO`). `PARENT_REPO` means the folder is inside another repo (a monorepo, or
+     a home folder kept in git): ask which one they mean before going on. `UNMERGED` or `BAD_NAME` (a name with a
+     line break or control character): tell the user, and don't commit those files.
+   - `shipyard-git.sh destination` prints `PUSH_TO` for each GitHub URL origin pushes to, with any credentials in
+     it hidden. `NOT_GITHUB` or `NO_ORIGIN`: see below.
+   - After `shipyard-git.sh fetch`, the branch is pushed (`git rev-parse HEAD` equals `git rev-parse @{u}`), and
+     inventory lists nothing except files the user chose to keep local in step 3. They aren't deployed.
+
+   `fetch`, `default-branch` and `push` don't wait at password prompts and keep the user's own SSH setup. On
+   `NET_FAILED`, tell the user what it says: the remote needs credentials, or this machine hasn't connected to that
+   host before.
 
    If there's no `origin` and no other remote points at GitHub (`git remote -v`), and `gh auth status` succeeds, offer
    to create a private repo in the proposal below (`gh repo create <owner>/<name> --private --source . --remote
-   origin`, naming the owner). If the folder isn't a git repo yet, or has no commits, put `git init` and a first
-   commit in the proposal too. If another remote (for example `upstream`) is on GitHub, ask which repo they mean
-   instead. If `origin` exists but isn't GitHub, tell the user Shipyard builds from GitHub and stop: never remove,
-   rename or repoint a remote they have. Without `gh`, send the user to https://github.com/new and wait.
+   origin`, naming the owner), with `git init` first if the folder isn't a repo. If another remote (for example
+   `upstream`) is on GitHub, ask which repo they mean instead. If `origin` exists but isn't GitHub, tell the user
+   Shipyard builds from GitHub and stop: never remove, rename or repoint a remote they have. Without `gh`, send the
+   user to https://github.com/new and wait.
 2. **Compose file.** Shipyard needs a Docker Compose file. If the repo has none at its root, or plan returns
    `add_compose_file` or says the file isn't valid, read `references/compose.md` (next to this file) and follow it
    before planning. Never overwrite or replace a compose file the user already has.
 3. **One proposal.** If anything has to change before planning, show it all in one message and ask for one yes, even
-   if they already said yes to putting the repo on Shipyard: where the push goes (`git remote get-url origin`, or the
-   owner and name of the repo you'd create), every file you'd commit by path (and the full compose file you wrote),
-   the branch, and the push. Don't ask about each part separately. If the user turns down a part, drop it and say what
-   that means.
-   - **Branch.** Use the current one, unless the user asks for a new one. If `origin` already exists, find its default
-     branch (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`, or `git ls-remote --symref origin
-     HEAD`). If the current branch is the default, or you can't tell, propose a new branch (for example
+   if they already said yes to putting the repo on Shipyard: where the push goes (the `PUSH_TO` lines, or the owner
+   and name of the repo you'd create), `git init` if the folder isn't a repo, every file you'd commit by path (and
+   the full compose file you wrote), every commit the push sends, the branch, and the push. Don't ask about each part
+   separately. If the user turns down a part, drop it and say what that means.
+   - **Branch.** Use the current one, unless the user asks for a new one. When you're creating the repo, or
+     `shipyard-git.sh default-branch` says `EMPTY_REMOTE`, keep the current branch: it becomes the repo's default. If
+     it says `DEFAULT <name>` for the current branch, or `UNKNOWN`, propose a new branch (for example
      `add-shipyard-compose`) instead, and say they can keep the current one.
    - **What to commit.** List the files you wrote (the compose file, and any Dockerfile, `.dockerignore` or
-     `.gitignore` change) apart from the user's own uncommitted files. Of the user's files, propose only the ones the
-     build needs, such as app code that was never committed, and list the rest as kept local and not deployed. List
-     single file paths from `git status --porcelain --untracked-files=all`, never a folder.
-   - **Screen before anything changes**, before you create a repo, run `git init` or commit:
-     - every file you'd commit, by name against the list below;
-     - those files by content, with `grep -lIE -i "$SECRET_PATTERN" -- <paths>`;
-     - the commits the remote doesn't have yet, when there are any commits:
-       `git log --name-only --format= HEAD --not --remotes` by name, and
-       `git log -E -i -G"$SECRET_PATTERN" --name-only --format='commit %h' HEAD --not --remotes` by content. With no
-       remote, that's the whole history.
+     `.gitignore` change) apart from the user's own uncommitted files from inventory. Of the user's files, propose
+     only the ones the build needs, such as app code that was never committed, and list the rest as kept local and
+     not deployed. Never commit a `FOLDER` line's folder.
+   - **Screen before anything changes**, before you run `git init`, create a repo or commit: write every path you'd
+     commit to a list file, and run `shipyard-git.sh screen <list file>`, adding `--new-repo` before the file when
+     you'd create the repo. With nothing to commit, use an empty list file: it still screens the commits a push
+     sends. It prints only file names and commit hashes, never values:
+     - `NAME_HIT`, `TOO_BIG`: leave the file out (see the never-commit list below).
+     - `CONTENT_HIT`: a secret-looking line. Name the file and leave it out unless the user says it's safe.
+     - `BINARY_NOT_SCANNED`: a binary file the screen can't read. Name it in the proposal so the user can check it.
+     - `COMMIT`, `COMMITS_TOTAL`: the commits the push sends. Show every one in the proposal; when there are more
+       than fit, the line names a file that lists them all.
+     - `HISTORY_NAME_HIT`, `HISTORY_CONTENT_HIT`: a commit the push sends holds a never-commit file or a secret-looking
+       line. Name the commit and file and ask the user to look: if it isn't a secret, they can say so and you go on;
+       if it is, don't push, and tell them it has to be removed from git history and rotated.
+     - `SCREEN_FAILED`, exit code 2, or a screen you couldn't run counts as a hit on everything: commit and push
+       nothing, and tell the user.
 
-     Set `SECRET_PATTERN` to
-     `PRIVATE KEY|(api[_-]?key|secret|token|passw(or)?d|credential)[A-Za-z0-9_]*[^A-Za-z0-9[:space:]]?[[:space:]]*[:=][[:space:]]*[^A-Za-z0-9[:space:]]?[A-Za-z0-9_/+=.-]{8,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-|sk_live_|://[^/[:space:]:@]+:[^/[:space:]@]+@`.
-     These print only file names and commits, never values. Name every hit and leave a file out unless the user says
-     it's safe. If a hit is in a commit, don't push: tell the user it has to be removed from git history first. A
-     clean screen isn't proof that nothing secret is in the files: say so.
+     `SCREEN_CLEAN` isn't proof that nothing secret is in the files: say so.
    - **Never commit** anything that may hold credentials, for example `.env` and `.env.*` (but not `.env.example` or
      `.env.sample`), keys and certificates (`*.pem`, `*.key`, `*.p12`, `*.pfx`, SSH keys like `id_rsa` or
      `id_ed25519`), `credentials.json` or other service-account files, an `.npmrc` or `.pypirc` with a token,
      Terraform state (`*.tfstate*`, `.terraform/`), or database files and dumps. Don't commit dependencies
      (`node_modules/`, `.venv/`) or files bigger than 50 MB either. Leave them out, name them, and offer a `.gitignore`
-     entry for them as part of the commit. Ask before leaving out `dist/` or `build/`: some repos commit them on purpose.
-   - **After the yes**, in this order: `git init` if needed, commit, create the repo if needed, push. Commit by path
-     (`git add <paths>`, then `git commit -m "..." -- <paths>`), never `git add -A` or `git add .`. Push with
-     `git push -u origin <branch>`, so `@{u}` exists for the next preflight. If the push after `gh repo create` fails
-     on credentials, run `gh auth setup-git` and push again. Never force-push or rebase. If the push is rejected, or
-     HEAD isn't on a branch, stop and tell the user.
+     entry for them as part of the commit. Ask before leaving out `dist/`, `build/` or `vendor/`: some repos commit them on purpose.
+   - **After the yes**, in this order: `git init` if the folder isn't a repo; `git switch -c <branch>` if you proposed
+     a new branch; if there are files to commit, write the message to a file and run `shipyard-git.sh commit <list
+     file> <message file>` with the list you screened; create the repo if needed; `shipyard-git.sh push <branch>`,
+     which pushes that branch only. Commit only through the script: never `git add -A` or `git add .`. It refuses a
+     folder, a never-commit file or an empty list, and puts the index back if the commit fails. On `NO_IDENTITY`, ask
+     the user to set their git name and email; on `IN_PROGRESS`, to finish or abort their merge or rebase first. If
+     the push after `gh repo create` fails on credentials, ask before running `gh auth setup-git`: it changes the
+     user's global git credential helper. Never force-push or rebase. On `PUSH_REJECTED` (the remote has newer
+     commits), `PUSH_BLOCKED` (GitHub or a remote rule refused it, for example for a secret) or `HOOK_FAILED`, stop
+     and tell the user what it says.
 4. **Plan.** Call `plan_application` with the repo and branch. Nothing changes yet. If the plan has an `existing_app`,
    this repo and branch already have an app: tell the user, don't ask for any env values, and offer
    `update_application` for services and routes.
@@ -123,7 +144,9 @@ Shipyard dashboard.
    Propose values so one yes can take them all. Take a non-secret value from `.env.example` or `.env.sample`, a
    compose default (`${NAME:-value}`), or the obvious one for the name (a port, a title, `development`). Don't propose
    a host or URL that points at `localhost` or `127.0.0.1`: on Shipyard each service is its own host, so use the
-   compose service's name (`redis`) when it's clear, and otherwise leave the value for the user. Never
+   compose service's name (`redis`) when it's clear, and otherwise leave the value for the user. A value the browser
+   reads (a build arg, or `NEXT_PUBLIC_*`, `VITE_*`, `REACT_APP_*`) can't use a service name either: leave it for the
+   user, since it needs the environment's public URL. Never
    propose a secret (a password, token or key for an outside service): leave it out so the user sets it in the
    Shipyard dashboard, and say the first build may fail until they do. The user can change any value, and anything
    they type here passes through this chat. Don't read values from `.env` or other files that git doesn't track unless

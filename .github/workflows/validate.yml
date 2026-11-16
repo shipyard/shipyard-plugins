@@ -46,6 +46,24 @@ jobs:
       - name: Repo checks
         run: python .github/scripts/check_plugin.py
 
+      # The hosted skill's git script against fixture repos: secret pattern,
+      # literal paths, merge commits, other remotes, push URLs. See the script.
+      - name: Hosted skill git script
+        run: python .github/scripts/test_shipyard_git.py
+
+  hosted-script-macos:
+    name: Hosted skill git script (macOS, bash 3.2)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Users run the script with macOS's own /bin/bash 3.2 and BSD tools, so
+      # the fixture tests run there too, with that bash first on PATH.
+      - name: Fixture tests with /bin/bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin" && ln -sf /bin/bash "$RUNNER_TEMP/bin/bash"
+          PATH="$RUNNER_TEMP/bin:$PATH" python3 .github/scripts/test_shipyard_git.py
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
