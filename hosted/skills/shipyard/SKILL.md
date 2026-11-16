@@ -112,14 +112,15 @@ Shipyard dashboard.
      - `CONTENT_HIT`: a secret-looking line. Name the file and leave it out unless the user says it's safe. If they
        do, copy that exact `CONTENT_HIT` line into a confirmed-hits file for the commit and the push. The line
        carries the file's content id, so if the file changes afterwards, the confirmation no longer covers it.
-     - `BINARY_NOT_SCANNED`: a binary file the screen can't read. Name it in the proposal so the user can check it.
+     - `BINARY_NOT_SCANNED`, `HISTORY_BINARY_NOT_SCANNED`: a binary file, or binary content in a commit the push
+       sends, that the screen can't fully read. They aren't hits: name them in the proposal so the user can check them.
      - `COMMIT`, `COMMITS_TOTAL`: the commits the push sends. Show every one in the proposal; when there are more
        than fit, the line names a file that lists them all.
      - `HISTORY_NAME_HIT`, `HISTORY_CONTENT_HIT`, `HISTORY_MESSAGE_HIT`: a commit the push sends holds a never-commit
        file, a secret-looking line, or a secret-looking commit message. Name the commit (and file) and ask the user to
        look: if it isn't a secret, they can say so, you copy that exact line into the confirmed-hits file, and you go
        on; if it is, don't push, and tell them it has to be removed from git history and rotated.
-     - `HISTORY_LFS_HIT`: a commit the push sends holds a Git LFS file. The screen only sees its pointer, while the
+     - `HISTORY_LFS_HIT`: a commit the push sends adds or changes a Git LFS file. The screen only sees its pointer, while the
        push uploads the real content. Name the commit and file and ask the user to check that content; if it's fine,
        copy that exact line into the confirmed-hits file.
      - `HISTORY_TOO_LONG`: the history has too many commits, or too much changed text, to screen here. Commit and
