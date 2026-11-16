@@ -13,6 +13,7 @@ with one line per failure; pytest runs it as one test.
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -185,8 +186,9 @@ def main():
         FIXTURES = t / "github"; FIXTURES.mkdir()
         fake = t / "fake-ssh"; fake.write_text(FAKE_SSH); fake.chmod(0o755)
         ENV = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "SSH_ASKPASS"))}
+        (t / "tmp").mkdir()
         ENV.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_SSH_COMMAND": str(fake),
-                    "GIT_SSH_VARIANT": "ssh", "FIXTURE_ROOT": str(FIXTURES)})
+                    "GIT_SSH_VARIANT": "ssh", "FIXTURE_ROOT": str(FIXTURES), "TMPDIR": str(t / "tmp")})
 
         # Paths with shell and glob characters are screened, and only they are committed.
         r1 = repo(t / "brackets")
@@ -412,9 +414,14 @@ def main():
         for good_url in ("git@github.com:o/r.git", "ssh://git@ssh.github.com:443/o/r.git", "https://GitHub.com/o/r.git"):
             sh(rd, "git", "remote", "set-url", "origin", good_url)
             expect(f"destination accepts {good_url}", tool(rd, "destination"), 0, ["PUSH_TO"], ["NOT_GITHUB"])
-        sh(rd, "git", "config", "remote.origin.pushurl", "--upload-pack=touch PWNED")
-        tool(rd, "screen", lst("inj"))
-        if (rd / "PWNED").exists():
+        ri = repo(t / "inject")
+        sh(ri, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "inject.git")
+        sh(ri, "git", "remote", "add", "origin", "../inject.git")
+        sh(ri, "git", "config", "remote.origin.pushurl", "--upload-pack=touch PWNED")
+        expect("screen names a push URL that starts with '-'", tool(ri, "screen", lst("inj")), 2, ["starts with '-'"])
+        expect("push refuses a push URL that starts with '-'", tool(ri, "push", "main"), 2, ["starts with '-'"], ["PUSHED"])
+        if (ri / "PWNED").exists():
             failures.append("a push URL starting with --upload-pack= ran a command")
 
         # Inventory before git init, .gitignore, dependency folders once each, and fast.
@@ -588,6 +595,193 @@ def main():
             failures.append(f"screening 300 commits took {took:.0f}s")
         expect("a history over the limit stops instead of hanging",
                tool(rl, "screen", "--new-repo", lst("lg2"), env={**ENV, "SHIPYARD_MAX_HISTORY": "100"}), 2, ["HISTORY_TOO_LONG"])
+        # (A fresh temp folder: the full screen above is cached, and a finished screen stays valid.)
+        fresh_tmp = t / "tmp-fresh"; fresh_tmp.mkdir()
+        expect("a history with too much patch text stops instead of hanging",
+               tool(rl, "screen", "--new-repo", lst("lg3"), env={**ENV, "SHIPYARD_MAX_PATCH_BYTES": "1000", "TMPDIR": str(fresh_tmp)}),
+               2, ["HISTORY_TOO_LONG"])
+
+        # --- Review 4 ---
+        SYM = "TOKEN=synthetic" + "12345abcdef"
+        # C1. A cut-short cache file never stands in for a screen.
+        rx = repo(t / "cachecut")
+        write(rx / "s.py", SECRET); commit_all(rx, "a")
+        expect("screen before the cache is cut", tool(rx, "screen", "--new-repo", lst("cc1")), 1, ["HISTORY_CONTENT_HIT"])
+        for d in (t / "tmp").glob("shipyard-git-cache-*"):
+            for f in d.iterdir():
+                f.write_text("")
+        expect("a cut-short cache file is screened again", tool(rx, "screen", "--new-repo", lst("cc2")), 1, ["HISTORY_CONTENT_HIT", "s.py"])
+
+        # C2. Only https and ssh URLs (and scp form) count as GitHub: file://github.com/... is local.
+        rf = repo(t / "fileurl")
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "fileurl.git")
+        sh(rf, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        sh(rf, "git", "remote", "add", "origin", f"file://github.com{t}/fileurl.git")
+        expect("destination rejects file://github.com/...", tool(rf, "destination"), 0, ["NOT_GITHUB"], ["PUSH_TO"])
+        expect("push refuses file://github.com/...", tool(rf, "push", "main"), 2, ["isn't GitHub"], ["PUSHED"])
+        if sh(t / "fileurl.git", "git", "rev-parse", "-q", "--verify", "main", check=False).returncode == 0:
+            failures.append("push reached a file:// remote")
+        sh(rf, "git", "remote", "set-url", "origin", "http://github.com/o/r.git")
+        expect("destination rejects plain http", tool(rf, "destination"), 0, ["NOT_GITHUB"], ["PUSH_TO"])
+
+        # C3. Push never sends a submodule's commits along with it.
+        sub = t / "subsrc"; repo(sub); sh(sub, "git", "commit", "-q", "--allow-empty", "-m", "s1")
+        sh(t, "git", "clone", "-q", "--bare", str(sub), "sub.git")
+        rp = repo(t / "parent")
+        sh(rp, "git", "config", "protocol.file.allow", "always")
+        sh(rp, "git", "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(t / "sub.git"), "sm")
+        sh(rp, "git", "commit", "-qm", "add sm")
+        sm = rp / "sm"
+        sh(sm, "git", "config", "user.name", "t"); sh(sm, "git", "config", "user.email", "t@example.invalid")
+        sh(sm, "git", "config", "protocol.file.allow", "always")
+        sh(sm, "git", "commit", "-q", "--allow-empty", "-m", "local only")
+        sh(rp, "git", "add", "sm"); sh(rp, "git", "commit", "-qm", "bump sm")
+        sh(rp, "git", "config", "submodule.recurse", "true"); sh(rp, "git", "config", "push.recurseSubmodules", "on-demand")
+        gh_remote(t, rp, "parent")
+        before = sh(t / "sub.git", "git", "rev-parse", "main").stdout
+        expect("push with submodule recursion configured", tool(rp, "push", "main"), 0, ["PUSHED main"])
+        if sh(t / "sub.git", "git", "rev-parse", "main").stdout != before:
+            failures.append("push sent a submodule's unscreened commits to the submodule's remote")
+
+        # C4. Push sends the commit it screened, even if the branch moves in between.
+        shim = t / "shim"; shim.mkdir()
+        real_git = shutil.which("git")
+        (shim / "git").write_text(f"""#!/bin/sh
+case " $* " in *" push "*)
+  if [ -n "$RACE_REPO" ] && [ ! -e "$RACE_REPO/.git/raced" ]; then
+    : > "$RACE_REPO/.git/raced"
+    printf '%s\\n' 'TOKEN = "synthetic""12345abc"' > "$RACE_REPO/late.py"
+    "{real_git}" -C "$RACE_REPO" add late.py && "{real_git}" -C "$RACE_REPO" commit -qm late
+  fi ;;
+esac
+exec "{real_git}" "$@"
+""")
+        (shim / "git").chmod(0o755)
+        rrace = repo(t / "race")
+        gh_remote(t, rrace, "race")
+        sh(rrace, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        screened = sh(rrace, "git", "rev-parse", "HEAD").stdout.strip()
+        tool(rrace, "push", "main", env={**ENV, "PATH": f"{shim}:{ENV['PATH']}", "RACE_REPO": str(rrace)})
+        pushed = sh(FIXTURES / "race.git", "git", "rev-parse", "-q", "--verify", "main", check=False).stdout.strip()
+        if pushed and pushed != screened:
+            failures.append("push sent a commit made after its screen")
+
+        # C5. A line break in a file name in history is a hit, and can't forge an output line.
+        rnl = repo(t / "nlname")
+        write(rnl / "ok\nHISTORY_FAKE 1 b.txt", "x\n"); commit_all(rnl, "a")
+        r = tool(rnl, "screen", "--new-repo", lst("nl"))
+        expect("a history file name with a line break is a hit", r, 1, ["HISTORY_NAME_HIT"], ["\nHISTORY_FAKE"])
+
+        # C6. Commit screens symlinks: a listed one, and one a hook swaps in.
+        rsl = repo(t / "symlinks")
+        os.symlink(SYM, rsl / "lnk")
+        expect("commit refuses an unconfirmed secret-looking symlink", tool(rsl, "commit", lst("sl", "lnk"), msg("sl", "x\n")),
+               2, ["SCREEN_FAILED", "hasn't confirmed"], ["COMMITTED", "landed"])
+        r = tool(rsl, "screen", "--new-repo", lst("sl", "lnk"))
+        okl = LISTS / "sl.ok"; okl.write_text("".join(l + "\n" for l in r.stdout.splitlines() if l.startswith("CONTENT_HIT ")))
+        expect("commit takes a confirmed symlink", tool(rsl, "commit", lst("sl", "lnk"), msg("sl", "x\n"), str(okl)), 0, ["COMMITTED"])
+        head = sh(rsl, "git", "rev-parse", "HEAD").stdout.strip()
+        hk = rsl / ".git/hooks/pre-commit"
+        hk.write_text("#!/bin/sh\nrm -f c.txt && ln -s '" + SYM + "' c.txt && git add c.txt\n"); hk.chmod(0o755)
+        write(rsl / "c.txt", "clean\n")
+        expect("commit undoes a hook that swaps in a secret-looking symlink", tool(rsl, "commit", lst("sw", "c.txt"), msg("sw", "x\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+        if sh(rsl, "git", "rev-parse", "HEAD").stdout.strip() != head:
+            failures.append("a hook's secret-looking symlink stayed committed")
+        hk.unlink()
+
+        # C7. A hook that writes a secret into the message gets the commit undone.
+        rmh = repo(t / "msghook")
+        sh(rmh, "git", "commit", "-q", "--allow-empty", "-m", "base")
+        head = sh(rmh, "git", "rev-parse", "HEAD").stdout.strip()
+        mh = rmh / ".git/hooks/commit-msg"
+        mh.write_text("#!/bin/sh\nprintf '%s\\n' 'API_KEY=synthetic''12345abc' >> \"$1\"\n"); mh.chmod(0o755)
+        write(rmh / "a.txt", "a\n")
+        expect("commit undoes a hook that writes a secret into the message", tool(rmh, "commit", lst("mh", "a.txt"), msg("mh", "x\n")),
+               2, ["SCREEN_FAILED"], ["COMMITTED"])
+        if sh(rmh, "git", "rev-parse", "HEAD").stdout.strip() != head:
+            failures.append("a hook's secret-looking message stayed committed")
+
+        # C8. Commit refuses a file over 50 MB.
+        rbig = repo(t / "bigcommit")
+        with open(rbig / "huge.bin", "wb") as f:
+            f.seek(51 * 1024 * 1024)
+            f.write(b"x")
+        expect("commit refuses a file over 50 MB", tool(rbig, "commit", lst("bg", "huge.bin"), msg("bg", "x\n")), 2,
+               ["SCREEN_FAILED", "can't go in"], ["COMMITTED", "landed"])
+        (rbig / "huge.bin").unlink()
+
+        # Paths must be written as git writes them: no ./, .., // or leading /.
+        rcan = repo(t / "canon")
+        write(rcan / "a.txt", "a\n")
+        for bad_path in ("./a.txt", "x/../a.txt", "/a.txt", "x//a.txt"):
+            expect(f"screen refuses the path {bad_path}", tool(rcan, "screen", lst("cn", bad_path)), 2, ["SCREEN_FAILED"])
+
+        # A file name that starts with a double quote hashes as itself.
+        rdq = repo(t / "dquote")
+        write(rdq / "q.py", "plain\n"); write(rdq / '"q.py"', SECRET)
+        r = tool(rdq, "screen", lst("dq", '"q.py"'))
+        okq = LISTS / "dq.ok"; okq.write_text("".join(l + "\n" for l in r.stdout.splitlines() if l.startswith("CONTENT_HIT ")))
+        expect("commit takes a confirmed hit whose name starts with a quote", tool(rdq, "commit", lst("dq", '"q.py"'), msg("dq", "x\n"), str(okq)),
+               0, ["COMMITTED"])
+
+        # A hit confirmed before git init still commits, whatever .gitattributes does to the file.
+        nr = t / "newrepo-crlf"; nr.mkdir()
+        write(nr / ".gitattributes", "* text=auto\n")
+        with open(nr / "cfg.txt", "w", newline="") as f:
+            f.write(SECRET.rstrip("\n") + "\r\n")
+        paths = lst("nr1", "cfg.txt", ".gitattributes")
+        r = tool(nr, "screen", "--new-repo", paths)
+        oknr = LISTS / "nr1.ok"; oknr.write_text("".join(l + "\n" for l in r.stdout.splitlines() if l.startswith("CONTENT_HIT ")))
+        repo(nr)
+        expect("a hit confirmed before git init still commits", tool(nr, "commit", paths, msg("nr1", "add\n"), str(oknr)), 0, ["COMMITTED"])
+
+        # An undo that can't move the branch back says so.
+        rud = repo(t / "undofail")
+        sh(rud, "git", "commit", "-q", "--allow-empty", "-m", "base")
+        (rud / ".git/hooks/pre-commit").write_text("#!/bin/sh\ngit add extra.txt\n")
+        (rud / ".git/hooks/post-commit").write_text("#!/bin/sh\n: > .git/refs/heads/main.lock\n")
+        for h in ("pre-commit", "post-commit"):
+            (rud / ".git/hooks" / h).chmod(0o755)
+        write(rud / "a.txt", "a\n"); write(rud / "extra.txt", "x\n")
+        expect("a failed undo is reported", tool(rud, "commit", lst("ud", "a.txt"), msg("ud", "x\n")), 2, ["UNDO_FAILED"])
+        (rud / ".git/refs/heads/main.lock").unlink(missing_ok=True)
+
+        # A folder isn't a message file.
+        expect("commit refuses a folder as the message", tool(rcan, "commit", lst("md", "a.txt"), str(LISTS)), 2, ["SCREEN_FAILED"], ["COMMITTED"])
+
+        # Push: name and message hits stop it until the user confirms those exact lines.
+        for kind, setup in (("HISTORY_NAME_HIT", "name"), ("HISTORY_MESSAGE_HIT", "message")):
+            rk2 = repo(t / f"pushhit-{setup}")
+            gh_remote(t, rk2, f"pushhit-{setup}")
+            if setup == "name":
+                write(rk2 / ".env", "A=1\n"); commit_all(rk2, "env")
+            else:
+                write(rk2 / "a.txt", "a\n"); commit_all(rk2, "API_KEY=synthetic" + "12345abc")
+            r = tool(rk2, "push", "main")
+            expect(f"push stops on a {kind}", r, 1, [kind], ["PUSHED"])
+            if sh(FIXTURES / f"pushhit-{setup}.git", "git", "rev-parse", "-q", "--verify", "main", check=False).returncode == 0:
+                failures.append(f"push sent commits with an unconfirmed {kind}")
+            okk = LISTS / f"{setup}.ok"; okk.write_text("".join(l + "\n" for l in r.stdout.splitlines() if l.startswith(kind)))
+            expect(f"push goes ahead once the {kind} is confirmed", tool(rk2, "push", "main", str(okk)), 0, ["PUSHED main"])
+
+        # Design guards: url rewrites, Git LFS pointers, patch size.
+        rw = repo(t / "rewrite")
+        sh(t, "git", "init", "-q", "--bare", "-b", "main", "elsewhere.git")
+        sh(rw, "git", "commit", "-q", "--allow-empty", "-m", "1")
+        sh(rw, "git", "config", "url.https://github.com/b/.insteadOf", "rev:")
+        sh(rw, "git", "config", f"url.{t}/else.insteadOf", "https://github.com/b/")
+        sh(rw, "git", "remote", "add", "origin", "rev:where.git")
+        # (rev:where.git -> https://github.com/b/where.git, which a second rule turns into the local elsewhere.git.)
+        expect("destination flags a URL a rewrite rule would change again", tool(rw, "destination"), 0, ["NOT_GITHUB"], ["PUSH_TO"])
+        expect("push refuses a URL a rewrite rule would change again", tool(rw, "push", "main"), 2, ["insteadOf"], ["PUSHED"])
+        if sh(t / "elsewhere.git", "git", "rev-parse", "-q", "--verify", "main", check=False).returncode == 0:
+            failures.append("push followed a second url rewrite to another host")
+
+        rlfs = repo(t / "lfs")
+        write(rlfs / "model.bin", "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 12\n")
+        commit_all(rlfs, "lfs")
+        expect("a Git LFS pointer in history is named", tool(rlfs, "screen", "--new-repo", lst("lf")), 1, ["HISTORY_LFS_HIT", "model.bin"])
 
         # The GitHub guard runs for real: a local remote is refused.
         rg = repo(t / "guard")
