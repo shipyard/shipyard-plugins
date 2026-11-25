@@ -126,7 +126,7 @@ Known client issues:
 | Claude Code | Claude plugin directory | Not submitted | Icon, privacy policy and ToS update, listing owner |
 | Codex | OpenAI plugin directory | Not submitted | Accepts only hosted HTTPS+OAuth servers: submit `shipyard-hosted`, tested in Codex on 2026-11-24. Needs OpenAI business and domain verification, and a StackGen listing owner |
 | Cursor | Cursor Marketplace | Not submitted | Icon, privacy policy and ToS update, listing owner |
-| Kiro | Kiro Powers | Listed (`shipyard-hosted`) | Kiro listed the hosted plugin from the submission form, with its own title and description. The PR to [kirodotdev/powers](https://github.com/kirodotdev/powers) asks Kiro to use the published files, as "Shipyard by StackGen", instead |
+| Kiro | Kiro Powers | Listed (`shipyard-hosted`) | Kiro listed the hosted plugin from the submission form, with its own title and description. The PR to [kirodotdev/powers](https://github.com/kirodotdev/powers) asks Kiro to use the published files, as "Agentic Testing in Ephemeral Environments", instead |
 
 Until a listing is published, install from GitHub as above.
 
