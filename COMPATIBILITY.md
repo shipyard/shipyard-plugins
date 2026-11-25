@@ -124,8 +124,26 @@ Known client issues:
 | Client | Marketplace | State | Blocker |
 |---|---|---|---|
 | Claude Code | Claude plugin directory | Not submitted | Icon, privacy policy and ToS update, listing owner |
-| Codex | OpenAI plugin directory | Blocked | Accepts only hosted HTTPS+OAuth servers. The hosted server is live; it still needs the `shipyard-hosted` plugin tested in Codex (SHIP-558), plus OpenAI business and domain verification |
+| Codex | OpenAI plugin directory | Not submitted | Accepts only hosted HTTPS+OAuth servers: submit `shipyard-hosted`, tested in Codex on 2026-11-24. Needs OpenAI business and domain verification, and a StackGen listing owner |
 | Cursor | Cursor Marketplace | Not submitted | Icon, privacy policy and ToS update, listing owner |
-| Kiro | Kiro Powers | Not submitted | Icon, privacy policy and ToS update, listing owner, Publisher Terms accepted |
+| Kiro | Kiro Powers | Listed (`shipyard-hosted`) | Kiro listed the hosted plugin from the submission form, with its own title and description. The PR to [kirodotdev/powers](https://github.com/kirodotdev/powers) asks Kiro to use the published files, as "Agentic Testing in Ephemeral Environments", instead |
 
 Until a listing is published, install from GitHub as above.
+
+## Hosted plugin (`shipyard-hosted`)
+
+The hosted plugin connects to `https://mcp.shipyard.build/mcp` with OAuth and needs no CLI. Its publisher is StackGen.
+
+Tested with 0.2.1 on 2026-11-24, each from a clean client config, on a repo with untracked code, a `.env` and a
+Terraform state file: install, sign in, list environments, and add the repo as an app (Compose file written, files
+committed and pushed with `.env` and the state file left out, app created and built).
+
+| Client | Install | Sign-in | Add an app |
+|---|---|---|---|
+| Kiro IDE 1.4.178 | `https://github.com/shipyard/shipyard-plugins/tree/main/hosted`, or the Kiro catalog | ✅ OAuth from the MCP servers panel | ✅ |
+| Claude Code 2.1.312 | `claude plugin install shipyard-hosted@shipyard` | ✅ `/mcp`, then Authenticate | ✅ |
+| Codex 0.167.1 | `codex plugin add shipyard-hosted@shipyard` | ✅ `codex mcp login shipyard` | ✅ |
+| Cursor | Not tested | | |
+
+The skill's git helper, `skills/shipyard/scripts/shipyard-git.sh`, needs `bash` and `perl`: both come with macOS and most
+Linux distributions; on Windows, use Git Bash.

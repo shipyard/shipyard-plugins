@@ -68,10 +68,10 @@ server's (in Claude Code, `mcp__plugin_shipyard_shipyard__*`). Per-client settin
 
 ## Hosted plugin: nothing to install
 
-`shipyard-hosted` connects your agent to Shipyard's hosted MCP server (`https://mcp.shipyard.build/mcp`) instead of
-running the CLI. After installing, connect it from your client: `/mcp` in Claude Code, `codex mcp login shipyard` in
-Codex. Your browser opens Shipyard: sign in, pick the organization the agent works in, and allow access. Your client
-keeps the token; the plugin holds none.
+`shipyard-hosted` (Agentic Testing in Ephemeral Environments) connects your agent to Shipyard's hosted MCP server
+(`https://mcp.shipyard.build/mcp`) instead of running the CLI. After installing, connect it from your client: `/mcp` in
+Claude Code, `codex mcp login shipyard` in Codex. Your browser opens Shipyard: sign in, pick the organization the agent
+works in, and allow access. Your client keeps the token; the plugin holds none.
 
 It adds an app to Shipyard from a pushed GitHub branch, reconfigures it, and checks its environments, builds and
 failures. A reconfiguration can rebuild the app, restart a stopped one and unlink repos, and your agent should ask
