@@ -11,7 +11,7 @@
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Shipyard by StackGen",
+        "displayName": "Agentic Testing in Ephemeral Environments",
         "shortDescription": "Branch preview environments",
         "longDescription": "Put your GitHub repo on Shipyard and check its preview environments from your agent, with nothing to install. Sign in with Shipyard, and the agent adds the repo as an app, writes a Docker Compose file if the repo has none, and gives you a live preview environment for each branch. It asks before it commits, pushes or changes an app, and never commits .env files, keys or Terraform state. You can also check that a push deployed, read build logs and find out why a build failed.",
         "developerName": "StackGen",
