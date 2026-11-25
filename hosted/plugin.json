@@ -7,5 +7,33 @@
   "homepage": "https://shipyard.build",
   "repository": "https://github.com/shipyard/shipyard-plugins",
   "license": "Apache-2.0",
-  "keywords": ["shipyard", "stackgen", "ephemeral-environments", "preview-environments", "pull-request-environments", "preview environment", "docker compose", "deploy branch"]
+  "keywords": ["shipyard", "stackgen", "ephemeral-environments", "preview-environments", "pull-request-environments", "preview environment", "docker compose", "deploy branch"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Agentic Testing in Ephemeral Environments",
+        "shortDescription": "Branch preview environments",
+        "longDescription": "Put your GitHub repo on Shipyard and check its preview environments from your agent, with nothing to install. Sign in with Shipyard, and the agent adds the repo as an app, writes a Docker Compose file if the repo has none, and gives you a live preview environment for each branch. It asks before it commits, pushes or changes an app, and never commits .env files, keys or Terraform state. You can also check that a push deployed, read build logs and find out why a build failed.",
+        "developerName": "StackGen",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://shipyard.build",
+        "supportURL": "https://shipyard.build/contact/",
+        "privacyPolicyURL": "https://shipyard.build/privacy/",
+        "termsOfServiceURL": "https://shipyard.build/terms/",
+        "defaultPrompt": [
+          "Put this repo on Shipyard",
+          "List my Shipyard environments",
+          "Why did my last build fail?"
+        ],
+        "brandColor": "#AC40EF",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
+      }
+    }
+  }
 }
