@@ -30,9 +30,9 @@
           "List my Shipyard environments",
           "Why did my last build fail?"
         ],
-        "brandColor": "#009FDA",
-        "composerIcon": "./assets/icon.svg",
-        "logo": "./assets/icon.svg"
+        "brandColor": "#AC40EF",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
       }
     }
   }
